@@ -1,9 +1,9 @@
 # Changelog
 
-## 0.2.2 — 2026-06-13
+## 0.2.2 — 2026-06-14
 
 ### Changed
-- Documentation only: the npm README now documents the recall-timeout options added in 0.2.1 (`turnRecall.timeoutMs`, `startupRecall.timeoutMs`). No runtime changes — this release republishes the current README to npm.
+- Documentation overhaul (no runtime changes) — version bumped so npm serves the rewritten README. Adds a benefit-framed hero and a "How it works" lifecycle section, reorders the front matter, and rewrites Setup as an explicit install → connect → reload → tune procedure that distinguishes what's automatic, required, and optional. Also documents that pi can write the `mcp.json` / `automem.json` config for you, makes every config option discoverable via the bundled examples, and sharpens attribution so AutoMem (storage + recall engine) and this package (automation + guardrails) are clearly distinguished.
 
 ## 0.2.1 — 2026-06-13
 

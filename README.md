@@ -1,10 +1,10 @@
 <div align="center">
 
-![Pi Automem Bridge](assets/banner.png)
+![pi-automem-bridge](assets/banner.png)
 
 # pi-automem-bridge
 
-The missing link between [pi](https://github.com/earendil-works/pi) and [AutoMem](https://github.com/verygoodplugins/automem). If you already have both set up, this package connects them — giving pi automatic long-term memory: startup recall, turn-level recall, policy-gated writes, and relationship tools.
+> **AutoMem is the memory. This bridge ensures pi actually uses it.**
 
 ```bash
 pi install npm:pi-automem-bridge
@@ -19,6 +19,30 @@ pi install npm:pi-automem-bridge
 
 ---
 
+## Why pi-automem-bridge
+
+Plenty of agents can store a memory. Far fewer reach for it when it counts — or check what they're scribbling down. pi-automem-bridge makes pi do both, automatically: startup + per-turn recall injected straight into the prompt, and a secret-scanning, policy-gated write pipeline guarding the door to AutoMem.
+
+- **Per-project scoping** — recall limits and filters tuned to the repo or folder you're working in.
+- **Bring your own AutoMem** — talks to your existing instance over MCP. No duplicate credentials or storage to manage.
+
+> The storage and the recall/similarity intelligence are [AutoMem](https://github.com/verygoodplugins/automem)'s. This package is the guardrail-and-automation layer that makes them automatic inside pi.
+
+---
+
+## How it works
+
+Once installed, the bridge hooks into pi's session lifecycle:
+
+- **At session start** it runs your startup recall queries against AutoMem and injects the results — your preferences, working style, and environment — into the system prompt.
+- **Before each turn** it recalls memories relevant to the current task and the detected project, again injected silently.
+- **When the agent writes a memory** the candidate passes through the write pipeline — normalize → secret-scan → policy check → dedupe → confirm or auto-store — so nothing unvetted reaches AutoMem.
+- **Relationship tools** let the agent link memories or record corrections with provenance, building a connected graph over time.
+
+Recall display, write policy, and per-project scoping are all configurable — see the [Configuration reference](#configuration-reference).
+
+---
+
 ## Before you begin
 
 This package does not include pi or AutoMem — it connects them. You need both running independently first:
@@ -27,24 +51,25 @@ This package does not include pi or AutoMem — it connects them. You need both 
 2. **[AutoMem](https://github.com/verygoodplugins/automem)** — the graph-vector memory service (self-hosted or Railway)
 3. **[mcp-automem](https://github.com/verygoodplugins/mcp-automem)** — the MCP bridge that exposes AutoMem's tools over the MCP protocol
 
-Once those three are in place, add `mcp-automem` to pi's MCP config and install this package. That's all the wiring this package needs.
+Once those three are in place, follow the setup below.
 
 ---
 
-## What it does
+## Setup
 
-- **Startup recall** — at session start, queries AutoMem for your preferences, working style, and environment
-- **Turn-level recall** — before each agent prompt, retrieves memories relevant to the current task and detected project
-- **Silent injection** — memory context is injected into the system prompt, not the chat window
-- **Policy-gated writes** — every memory write is validated, secret-scanned, deduplicated, and confirmed before storage
-- **Relationship tools** — link memories to each other or record corrections with provenance history
-- **Per-project tuning** — configure different recall limits and filters per detected project
+Three steps to a working install, then optional tuning. The package install is automatic — the **only** thing you must configure by hand is the connection to your own AutoMem server, because that carries your private server URL and token, and no package can (or should) write those for you.
 
----
+### 1. Install the package
 
-## Getting started
+```bash
+pi install npm:pi-automem-bridge
+```
 
-**1. Add your AutoMem server to `~/.pi/agent/mcp.json`:**
+This registers the extension's tools, commands, and recall hooks with pi automatically. Nothing runs yet — it has no server to talk to.
+
+### 2. Connect it to your AutoMem server — *required*
+
+Add an MCP server entry named `automem` to `~/.pi/agent/mcp.json`, pointing at the AutoMem instance from [Before you begin](#before-you-begin):
 
 ```json
 {
@@ -59,9 +84,17 @@ Once those three are in place, add `mcp-automem` to pi's MCP config and install 
 }
 ```
 
-Use `${ENV_VAR}` interpolation for secrets. Never hardcode credentials.
+This is the one step that can't be automated: the package has no way to know your server's address or auth token, and writing credentials on your behalf would be unsafe. Use `${ENV_VAR}` interpolation for the token — never hardcode secrets. The entry must be named `automem` (the name the extension looks for by default), or set a different name via `mcpServerName` in step 4.
 
-**2. Create `~/.pi/agent/automem.json`:**
+**Don't want to hand-edit JSON?** pi is a coding agent — tell it to do it: *"add an `automem` MCP server to my `mcp.json` at `https://my-server.example.com/mcp`, using `${AUTOMEM_TOKEN}` for auth."* Keep the real token in your environment so it never touches the file or the chat.
+
+### 3. Reload pi
+
+Start a new session or run `/reload`. **That's it — recall is now automatic and the bridge runs on sensible defaults** (`safe-auto` writes, `summary` recall display). From here, just work: pi recalls on its own and saves routine decisions automatically — tell it *"remember this"* anytime you want something kept. Confirm everything's live with `/automem-status`.
+
+### 4. Tune behavior — *optional*
+
+The bridge works fully without this file. To customize recall queries, write policy, per-project scoping, or display mode, create `~/.pi/agent/automem.json` — any value you leave out falls back to its default. (Or just tell pi what you want — *"only auto-save bug fixes and technical decisions, and hide the recall block"* — and have it write the file for you.)
 
 ```json
 {
@@ -79,7 +112,7 @@ Use `${ENV_VAR}` interpolation for secrets. Never hardcode credentials.
 }
 ```
 
-**3. Start or reload pi.** Recall is now automatic.
+Every option — with real values you can copy — is in the [Configuration reference](#configuration-reference) below.
 
 ---
 
@@ -91,6 +124,8 @@ Use `${ENV_VAR}` interpolation for secrets. Never hardcode credentials.
 | `/automem-recall <query>` | Manual recall query for debugging |
 
 ## Tools
+
+You don't type these — pi does, in plain conversation. Tell it *"remember that I prefer Vitest over Jest"* and it runs the thought through the write pipeline before storing; say *"actually, we moved off Railway"* and it records a correction with provenance. In `safe-auto` mode it also captures routine decisions on its own, no prompting needed.
 
 | Tool | What it does |
 |---|---|
@@ -135,16 +170,6 @@ When a commit finds a close match, `automem_commit_memory` returns `DUPLICATE_DE
 
 ---
 
-## Recall display modes
-
-| Mode | Behavior |
-|---|---|
-| `hidden` | Inject into system prompt only. Nothing shown in chat. |
-| `summary` | Inject into system prompt + show a compact notification. |
-| `full` | Show the full recall block. Useful for debugging. |
-
----
-
 ## Configuration reference
 
 Config file: `~/.pi/agent/automem.json` (or `AUTOMEM_CONFIG_PATH`)
@@ -159,7 +184,20 @@ Config file: `~/.pi/agent/automem.json` (or `AUTOMEM_CONFIG_PATH`)
 | `writePolicy` | Write mode, categories, importance threshold, dedupe settings |
 | `behavior` | Display mode and content-length preferences |
 
-See [`examples/config.minimal.json`](examples/config.minimal.json) and [`examples/config.advanced.json`](examples/config.advanced.json).
+Set only the keys you want to change — everything else uses its default. Two ready-to-edit starting points ship with the package:
+
+- **[`config.minimal.json`](https://github.com/vaniteav/pi-automem-bridge/blob/main/examples/config.minimal.json)** — the smallest useful config.
+- **[`config.advanced.json`](https://github.com/vaniteav/pi-automem-bridge/blob/main/examples/config.advanced.json)** — every option above, filled in with real values and sensible defaults. Copy it, trim what you don't need.
+
+### Recall display (`behavior.displayRecall`)
+
+Controls how much of the recalled context shows in chat. Injection into the system prompt happens regardless.
+
+| Mode | Behavior |
+|---|---|
+| `hidden` | Inject into system prompt only. Nothing shown in chat. |
+| `summary` | Inject into system prompt + show a compact notification. |
+| `full` | Show the full recall block. Useful for debugging. |
 
 ### Recall timeouts
 
