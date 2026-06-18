@@ -9,7 +9,7 @@
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { loadConfig } from "./config";
-import { automemHealth, discoverTools, setAutoMemMcpServerName } from "./mcp-client";
+import { automemHealth, discoverTools, getAutoMemMcpLifecycle, setAutoMemMcpServerName } from "./mcp-client";
 import { startupRecall, turnRecall, type RecallResult } from "./recall";
 import { detectProject } from "./project-detect";
 import { buildContextMessage } from "./context-injector";
@@ -24,6 +24,7 @@ export default function (pi: ExtensionAPI) {
   let autoMemHealthy = false;
   let autoMemCount: number | undefined;
   let startupInjected = false;
+  let startupRecallAttempted = false;
   let startupResult: RecallResult = { text: "", count: 0, truncated: false };
 
   // Register commands and write tools
@@ -37,32 +38,11 @@ export default function (pi: ExtensionAPI) {
     config = loadConfig();
     setAutoMemMcpServerName(config.mcpServerName);
 
-    try {
-      await discoverTools();
-      const health = await automemHealth();
-      autoMemHealthy = health.healthy;
-      autoMemCount = health.memoryCount;
-
-      if (health.healthy) {
-        const count = health.memoryCount != null ? " (" + health.memoryCount + ")" : "";
-        ctx.ui.notify("AutoMem: healthy" + count, "info");
-      } else {
-        ctx.ui.notify("AutoMem: unhealthy - " + (health.error || "unreachable"), "warning");
-      }
-    } catch (err) {
-      autoMemHealthy = false;
-      ctx.ui.notify("AutoMem health check failed: " + err, "warning");
-    }
+    notifyIfLazyMcpLifecycle(ctx);
+    await refreshAutoMemHealth(ctx, false);
 
     if (config.startupRecall.enabled && autoMemHealthy) {
-      try {
-        startupResult = await startupRecall(config);
-        if (startupResult.count > 0 && config.startupRecall.showStatus) {
-          ctx.ui.notify("AutoMem: recalled " + startupResult.count + " memories at startup", "info");
-        }
-      } catch (err) {
-        ctx.ui.notify("AutoMem startup recall failed: " + err, "warning");
-      }
+      await runStartupRecall(ctx);
     }
 
     updateStatusWidget(ctx);
@@ -70,7 +50,17 @@ export default function (pi: ExtensionAPI) {
 
   // before_agent_start - Turn-level recall + context injection
   pi.on("before_agent_start", async function(event: any, ctx: any) {
-    if (!autoMemHealthy) return;
+    if (!autoMemHealthy) {
+      const recovered = await refreshAutoMemHealth(ctx, true);
+      if (!recovered) {
+        updateStatusWidget(ctx);
+        return;
+      }
+    }
+
+    if (config.startupRecall.enabled && !startupRecallAttempted) {
+      await runStartupRecall(ctx);
+    }
 
     const prompt = event.prompt || "";
     if (!prompt.trim()) return;
@@ -135,8 +125,69 @@ export default function (pi: ExtensionAPI) {
     autoMemHealthy = false;
     autoMemCount = undefined;
     startupInjected = false;
+    startupRecallAttempted = false;
     startupResult = { text: "", count: 0, truncated: false };
   });
+
+  async function refreshAutoMemHealth(ctx: any, recoveringFromOffline: boolean): Promise<boolean> {
+    try {
+      if (!recoveringFromOffline) {
+        await discoverTools();
+      }
+
+      const healthTimeout = recoveringFromOffline
+        ? Math.max(1000, Math.min(3000, Number(config.turnRecall.timeoutMs || 3000)))
+        : 30000;
+      const health = await automemHealth(healthTimeout);
+      autoMemHealthy = health.healthy;
+      autoMemCount = health.memoryCount;
+
+      if (health.healthy) {
+        const count = health.memoryCount != null ? " (" + health.memoryCount + ")" : "";
+        ctx.ui.notify(recoveringFromOffline ? "AutoMem: recovered" + count : "AutoMem: healthy" + count, "info");
+      } else if (!recoveringFromOffline) {
+        ctx.ui.notify("AutoMem: unhealthy - " + (health.error || "unreachable"), "warning");
+      }
+
+      return health.healthy;
+    } catch (err) {
+      autoMemHealthy = false;
+      if (!recoveringFromOffline) {
+        ctx.ui.notify("AutoMem health check failed: " + err, "warning");
+      } else {
+        console.warn("[automem] AutoMem still unavailable during turn health retry: " + err);
+      }
+      return false;
+    }
+  }
+
+  async function runStartupRecall(ctx: any): Promise<void> {
+    startupRecallAttempted = true;
+    try {
+      startupResult = await startupRecall(config);
+      startupRecallAttempted = startupResult.failed !== true;
+      if (startupResult.count > 0 && config.startupRecall.showStatus) {
+        ctx.ui.notify("AutoMem: recalled " + startupResult.count + " memories at startup", "info");
+      }
+    } catch (err) {
+      startupRecallAttempted = false;
+      ctx.ui.notify("AutoMem startup recall failed: " + err, "warning");
+    }
+  }
+
+  function notifyIfLazyMcpLifecycle(ctx: any): void {
+    try {
+      const lifecycle = getAutoMemMcpLifecycle();
+      if (lifecycle === "lazy") {
+        ctx.ui.notify(
+          'AutoMem MCP lifecycle is "lazy". For automatic memory on every session, set the automem server in ~/.pi/agent/mcp.json to "lifecycle": "keep-alive".',
+          "warning",
+        );
+      }
+    } catch (err) {
+      console.warn("[automem] could not inspect MCP lifecycle: " + err);
+    }
+  }
 
   function updateStatusWidget(ctx: any) {
     const theme = ctx.ui.theme;

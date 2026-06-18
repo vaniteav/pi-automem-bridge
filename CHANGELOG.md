@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.4 — 2026-06-18
+
+### Changed
+- AutoMem connection warmup is now resilient to pi's lazy MCP startup: the bridge still tries to connect eagerly at session start, but if that first health check misses, later turns retry with a short timeout and run the missed startup recall after recovery.
+- README setup now configures the AutoMem MCP server with `lifecycle: "keep-alive"`, and the bridge warns when the server is still using pi-mcp-adapter's default lazy lifecycle.
+
 ## 0.2.3 — 2026-06-18
 
 ### Changed

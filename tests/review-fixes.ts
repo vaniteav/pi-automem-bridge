@@ -71,6 +71,8 @@ const { turnRecall } = await import("../src/recall");
 const { evaluateWritePolicy } = await import("../src/write-policy");
 const { registerRelationshipTools } = await import("../src/tools/relationship-tools");
 const { DEFAULT_CONFIG } = await import("../src/config");
+const automemExtension = (await import("../src/index")).default;
+const { registerStatusCommand } = await import("../src/commands/status");
 
 // ---------------------------------------------------------------------------
 // #1 — mcpCall must surface tool-level isError, not report it as healthy
@@ -379,6 +381,207 @@ const { DEFAULT_CONFIG } = await import("../src/config");
   );
 }
 
+// C7 [HIGH] — startup MCP failure must not permanently disable per-turn recall.
+// pi can lazy-load MCP servers, so an early health miss may recover after the
+// first turn. The extension should retry from before_agent_start instead of
+// freezing autoMemHealthy=false for the entire session.
+{
+  let healthCalls = 0;
+  reset((tool) => {
+    if (tool === "tools/list") {
+      return { tools: [{ name: "check_database_health" }, { name: "recall_memory" }] };
+    }
+    if (tool === "check_database_health") {
+      healthCalls++;
+      if (healthCalls === 1) {
+        return { content: [{ type: "text", text: "lazy MCP not ready" }], isError: true };
+      }
+      return { content: [{ type: "text", text: "{\"memory_count\":7}" }] };
+    }
+    if (tool === "recall_memory") {
+      return {
+        content: [{
+          type: "text",
+          text: "Found 1 memories:\n\n1. [Preference] Lazy MCP recovered memory [source:pi] score=0.9\nID: id-lazy\n",
+        }],
+      };
+    }
+    return { content: [{ type: "text", text: "ok" }] };
+  });
+
+  const handlers: Record<string, any[]> = {};
+  automemExtension({
+    on(name: string, handler: any) {
+      handlers[name] = handlers[name] || [];
+      handlers[name].push(handler);
+    },
+    registerCommand() {},
+    registerTool() {},
+  } as any);
+
+  const notifications: Array<{ message: string; level: string }> = [];
+  const ctx = {
+    cwd: home,
+    ui: {
+      notify(message: string, level: string) { notifications.push({ message, level }); },
+      theme: { fg(_name: string, text: string) { return text; } },
+      setStatus() {},
+    },
+  };
+
+  for (const h of handlers.session_start || []) await h({}, ctx);
+  assert.equal(healthCalls, 1, "session_start attempted one health check");
+
+  let result: any;
+  for (const h of handlers.before_agent_start || []) {
+    result = await h({ prompt: "what should I remember?", systemPrompt: "BASE" }, ctx);
+  }
+
+  assert.ok(healthCalls >= 2, "before_agent_start retries health after startup miss");
+  assert.ok(
+    result?.systemPrompt?.includes("Lazy MCP recovered memory"),
+    "turn recall recovers after lazy MCP becomes reachable",
+  );
+  assert.ok(
+    notifications.some(n => n.message.includes("AutoMem: recovered")),
+    "recovery is surfaced to the user instead of staying silent",
+  );
+}
+
+// C8 [HIGH] — a failed startup recall should be retried after lazy MCP recovery,
+// not treated as a successful "zero memories" recall forever.
+{
+  const retryConfigPath = join(home, ".pi", "agent", "automem-startup-retry.json");
+  writeFileSync(
+    retryConfigPath,
+    JSON.stringify({ turnRecall: { enabled: false }, startupRecall: { showStatus: false } }),
+    "utf8",
+  );
+  const oldConfigPath = process.env.AUTOMEM_CONFIG_PATH;
+  process.env.AUTOMEM_CONFIG_PATH = retryConfigPath;
+
+  let recallCalls = 0;
+  reset((tool) => {
+    if (tool === "tools/list") {
+      return { tools: [{ name: "check_database_health" }, { name: "recall_memory" }] };
+    }
+    if (tool === "check_database_health") {
+      return { content: [{ type: "text", text: "{\"memory_count\":7}" }] };
+    }
+    if (tool === "recall_memory") {
+      recallCalls++;
+      if (recallCalls === 1) {
+        return { content: [{ type: "text", text: "lazy recall not ready" }], isError: true };
+      }
+      return {
+        content: [{
+          type: "text",
+          text: "Found 1 memories:\n\n1. [Preference] Retried startup recall memory [source:pi] score=0.9\nID: id-startup-retry\n",
+        }],
+      };
+    }
+    return { content: [{ type: "text", text: "ok" }] };
+  });
+
+  const handlers: Record<string, any[]> = {};
+  automemExtension({
+    on(name: string, handler: any) {
+      handlers[name] = handlers[name] || [];
+      handlers[name].push(handler);
+    },
+    registerCommand() {},
+    registerTool() {},
+  } as any);
+
+  const ctx = {
+    cwd: home,
+    ui: {
+      notify() {},
+      theme: { fg(_name: string, text: string) { return text; } },
+      setStatus() {},
+    },
+  };
+
+  for (const h of handlers.session_start || []) await h({}, ctx);
+  assert.equal(recallCalls, 1, "session_start attempted startup recall once");
+
+  let result: any;
+  for (const h of handlers.before_agent_start || []) {
+    result = await h({ prompt: "continue", systemPrompt: "BASE" }, ctx);
+  }
+  process.env.AUTOMEM_CONFIG_PATH = oldConfigPath;
+
+  assert.ok(recallCalls >= 2, "before_agent_start retries failed startup recall");
+  assert.ok(
+    result?.systemPrompt?.includes("Retried startup recall memory"),
+    "retried startup recall is injected after lazy MCP recovery",
+  );
+}
+
+// C9 [MED] — lazy AutoMem MCP lifecycle is user-visible because it makes the
+// bridge appear unreliable. keep-alive should be the documented happy path.
+{
+  const mcpPath = join(home, ".pi", "agent", "mcp.json");
+  writeFileSync(
+    mcpPath,
+    JSON.stringify({ mcpServers: { automem: { url: "http://lazy.local/mcp", headers: {}, lifecycle: "lazy" } } }),
+    "utf8",
+  );
+
+  reset((tool) => {
+    if (tool === "tools/list") return { tools: [{ name: "check_database_health" }] };
+    if (tool === "check_database_health") return { content: [{ type: "text", text: "{\"memory_count\":1}" }] };
+    return { content: [{ type: "text", text: "ok" }] };
+  });
+
+  const handlers: Record<string, any[]> = {};
+  automemExtension({
+    on(name: string, handler: any) {
+      handlers[name] = handlers[name] || [];
+      handlers[name].push(handler);
+    },
+    registerCommand() {},
+    registerTool() {},
+  } as any);
+
+  const notifications: Array<{ message: string; level: string }> = [];
+  const ctx = {
+    cwd: home,
+    ui: {
+      notify(message: string, level: string) { notifications.push({ message, level }); },
+      theme: { fg(_name: string, text: string) { return text; } },
+      setStatus() {},
+    },
+  };
+
+  for (const h of handlers.session_start || []) await h({}, ctx);
+  assert.ok(
+    notifications.some(n => n.level === "warning" && n.message.includes('"lifecycle": "keep-alive"')),
+    "session_start warns when AutoMem MCP lifecycle is lazy",
+  );
+
+  const commands: Record<string, any> = {};
+  registerStatusCommand({ registerCommand(name: string, opts: any) { commands[name] = opts; } });
+  notifications.length = 0;
+  await commands["automem-status"].handler("", ctx);
+  assert.ok(
+    notifications.some(n => n.message === "MCP lifecycle: lazy" && n.level === "warning"),
+    "/automem-status reports lazy lifecycle as a warning",
+  );
+
+  writeFileSync(
+    mcpPath,
+    JSON.stringify({ mcpServers: { automem: { url: "http://keep.local/mcp", headers: {}, lifecycle: "keep-alive" } } }),
+    "utf8",
+  );
+  notifications.length = 0;
+  await commands["automem-status"].handler("", ctx);
+  assert.ok(
+    notifications.some(n => n.message === "MCP lifecycle: keep-alive" && n.level === "info"),
+    "/automem-status reports keep-alive lifecycle without warning severity",
+  );
+}
+
 console.log("Review-fix regression tests passed:");
 console.log("- #1 mcpCall surfaces tool-level isError (health reports unhealthy)");
 console.log("- #2 turn recall filters by lowercased project tag");
@@ -394,4 +597,7 @@ console.log("- C3 startup recall honors its timeout");
 console.log("- C4 automemStore preserves explicit zero scores");
 console.log("- C5 tool discovery re-runs on mcp.json change");
 console.log("- C6 same-mtime rewrite detected via file size");
+console.log("- C7 turn recall retries after lazy MCP startup miss");
+console.log("- C8 failed startup recall is retried after lazy MCP recovery");
+console.log("- C9 lazy AutoMem MCP lifecycle is surfaced to users");
 })().catch(e => { console.error(e); process.exit(1); });

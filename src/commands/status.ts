@@ -3,7 +3,7 @@
  */
 
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { automemHealth, setAutoMemMcpServerName } from "../mcp-client";
+import { automemHealth, getAutoMemMcpLifecycle, setAutoMemMcpServerName } from "../mcp-client";
 import { loadConfig } from "../config";
 
 export function registerStatusCommand(pi: {
@@ -19,6 +19,15 @@ export function registerStatusCommand(pi: {
       setAutoMemMcpServerName(config.mcpServerName);
 
       ctx.ui.notify("Checking AutoMem...", "info");
+      try {
+        const lifecycle = getAutoMemMcpLifecycle();
+        ctx.ui.notify("MCP lifecycle: " + lifecycle, lifecycle === "lazy" ? "warning" : "info");
+        if (lifecycle === "lazy") {
+          ctx.ui.notify('Set lifecycle to "keep-alive" in ~/.pi/agent/mcp.json so AutoMem connects at startup and reconnects automatically.', "warning");
+        }
+      } catch (err) {
+        ctx.ui.notify("Could not inspect MCP lifecycle: " + err, "warning");
+      }
 
       const health = await automemHealth();
 

@@ -34,7 +34,7 @@ Plenty of agents can store a memory. Far fewer reach for it when it counts — o
 
 Once installed, the bridge hooks into pi's session lifecycle:
 
-- **At session start** it runs your startup recall queries against AutoMem and injects the results — your preferences, working style, and environment — into the system prompt.
+- **At session start** it eagerly warms the AutoMem MCP connection, runs your startup recall queries, and injects the results — your preferences, working style, and environment — into the system prompt.
 - **Before each turn** it recalls memories relevant to the current task and the detected project, again injected silently.
 - **When the agent writes a memory** the candidate passes through the write pipeline — normalize → secret-scan → policy check → dedupe → confirm or auto-store — so nothing unvetted reaches AutoMem.
 - **Relationship tools** let the agent link memories or record corrections with provenance, building a connected graph over time.
@@ -78,13 +78,16 @@ Add an MCP server entry named `automem` to `~/.pi/agent/mcp.json`, pointing at t
       "url": "https://your-automem-server.example.com/mcp",
       "headers": {
         "Authorization": "Bearer ${AUTOMEM_TOKEN}"
-      }
+      },
+      "lifecycle": "keep-alive"
     }
   }
 }
 ```
 
 This is the one step that can't be automated: the package has no way to know your server's address or auth token, and writing credentials on your behalf would be unsafe. Use `${ENV_VAR}` interpolation for the token — never hardcode secrets. The entry must be named `automem` (the name the extension looks for by default), or set a different name via `mcpServerName` in step 4.
+
+`"lifecycle": "keep-alive"` is strongly recommended. pi-mcp-adapter defaults MCP servers to `"lazy"`, which means the AutoMem sidecar may not connect until a tool is called. Memory should be available from the first prompt, so `keep-alive` connects at startup and reconnects automatically if the connection drops. `eager` also connects at startup, but it does not auto-reconnect.
 
 **Don't want to hand-edit JSON?** pi is a coding agent — tell it to do it: *"add an `automem` MCP server to my `mcp.json` at `https://my-server.example.com/mcp`, using `${AUTOMEM_TOKEN}` for auth."* Keep the real token in your environment so it never touches the file or the chat.
 
@@ -204,6 +207,8 @@ Controls how much of the recalled context shows in chat. Injection into the syst
 ### Recall timeouts
 
 Recall is best-effort context enrichment, so it runs on a short, bounded timeout instead of the full MCP request timeout — a slow or unreachable AutoMem server degrades gracefully to no injection rather than blocking your prompt. Tune with `turnRecall.timeoutMs` (default `8000`) and `startupRecall.timeoutMs` (default `15000`).
+
+pi-mcp-adapter supports `lazy`, `eager`, and `keep-alive` MCP lifecycles. Use `keep-alive` for AutoMem. The bridge also performs an eager health check at session start to warm the AutoMem connection; if that early check races startup and misses, later turns retry with a short timeout and run the missed startup recall after AutoMem recovers. `/automem-status` is still useful for manual diagnostics, but it is not required as a startup kick.
 
 ---
 

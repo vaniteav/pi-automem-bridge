@@ -25,6 +25,8 @@ export interface McpHealth {
   error?: string;
 }
 
+export type McpLifecycle = "lazy" | "eager" | "keep-alive" | string;
+
 // ---------------------------------------------------------------------------
 // MCP config reader
 // ---------------------------------------------------------------------------
@@ -34,7 +36,7 @@ export interface McpHealth {
 // cheap stat signature (mtime + size — the same quick-check make/rsync use), so
 // an in-place mcp.json edit is still picked up even within a single mtime tick.
 // An empty signature (stat failed) never matches, forcing a fresh read.
-interface CachedServerConfig { url: string; auth: string; signature: string }
+interface CachedServerConfig { url: string; auth: string; lifecycle: McpLifecycle; signature: string }
 let mcpConfigCache: Map<string, CachedServerConfig> = new Map();
 
 function loadMcpServerConfig(serverName: string): CachedServerConfig {
@@ -58,7 +60,7 @@ function loadMcpServerConfig(serverName: string): CachedServerConfig {
   if (cached) discoveredTools = null;
 
   const mcpJson = JSON.parse(readFileSync(mcpJsonPath, "utf8")) as {
-    mcpServers?: Record<string, { url: string; headers?: Record<string, string> }>;
+    mcpServers?: Record<string, { url: string; headers?: Record<string, string>; lifecycle?: string }>;
   };
 
   const server = mcpJson.mcpServers ? mcpJson.mcpServers[serverName] : undefined;
@@ -70,6 +72,7 @@ function loadMcpServerConfig(serverName: string): CachedServerConfig {
   const entry: CachedServerConfig = {
     url: server.url,
     auth: resolveEnvVars(server.headers?.Authorization || ""),
+    lifecycle: server.lifecycle || "lazy",
     signature,
   };
   mcpConfigCache.set(serverName, entry);
@@ -116,6 +119,11 @@ export function setAutoMemMcpServerName(serverName: string | undefined): void {
 
 function getAutoMemMcpServerName(): string {
   return process.env.AUTOMEM_MCP_SERVER || configuredServerName || "automem";
+}
+
+export function getAutoMemMcpLifecycle(): McpLifecycle {
+  const serverName = getAutoMemMcpServerName();
+  return loadMcpServerConfig(serverName).lifecycle;
 }
 
 async function mcpCall(
@@ -310,9 +318,9 @@ export async function automemRecall(
   return mcpCall(resolveToolName("recall_memory"), args, timeoutMs);
 }
 
-export async function automemHealth(): Promise<McpHealth> {
+export async function automemHealth(timeoutMs: number = 30000): Promise<McpHealth> {
   try {
-    const result = await mcpCall(resolveToolName("check_database_health"), {});
+    const result = await mcpCall(resolveToolName("check_database_health"), {}, timeoutMs);
     const text = result.content && result.content[0] ? result.content[0].text : undefined;
     if (text) {
       try {

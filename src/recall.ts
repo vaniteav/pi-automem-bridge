@@ -183,6 +183,7 @@ export interface RecallResult {
   text: string;
   count: number;
   truncated: boolean;
+  failed?: boolean;
 }
 
 export async function startupRecall(config: AutoMemConfig): Promise<RecallResult> {
@@ -192,6 +193,7 @@ export async function startupRecall(config: AutoMemConfig): Promise<RecallResult
 
   const allMemories: FormattedMemory[] = [];
   const seenIds = new Set<string>();
+  let failedQueries = 0;
 
   for (let q = 0; q < config.startupRecall.queries.length; q++) {
     const query = config.startupRecall.queries[q];
@@ -220,6 +222,7 @@ export async function startupRecall(config: AutoMemConfig): Promise<RecallResult
         }
       }
     } catch (err) {
+      failedQueries++;
       console.warn('[automem] startup recall query failed: "' + query + '" - ' + err);
     }
   }
@@ -228,7 +231,7 @@ export async function startupRecall(config: AutoMemConfig): Promise<RecallResult
   const { text, included, overflowed } = formatMemoriesForContext(allMemories, maxBytes);
   const truncated = included < allMemories.length || overflowed;
 
-  return { text, count: allMemories.length, truncated };
+  return { text, count: allMemories.length, truncated, failed: failedQueries > 0 };
 }
 
 // ---------------------------------------------------------------------------
@@ -278,6 +281,6 @@ export async function turnRecall(
     return { text: formatted, count: memories.length, truncated };
   } catch (err) {
     console.warn("[automem] turn recall failed: " + err);
-    return { text: "", count: 0, truncated: false };
+    return { text: "", count: 0, truncated: false, failed: true };
   }
 }
