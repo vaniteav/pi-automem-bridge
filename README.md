@@ -10,7 +10,7 @@
 pi install npm:pi-automem-bridge
 ```
 
-[![npm version](https://badge.fury.io/js/pi-automem-bridge.svg)](https://badge.fury.io/js/pi-automem-bridge)
+[![npm version](https://img.shields.io/npm/v/pi-automem-bridge)](https://www.npmjs.com/package/pi-automem-bridge)
 [![npm downloads](https://img.shields.io/npm/dw/pi-automem-bridge)](https://www.npmjs.com/package/pi-automem-bridge)
 
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/L2J320X82M)
@@ -134,6 +134,8 @@ You don't type these — pi does, in plain conversation. Tell it *"remember that
 | `automem_update_memory` | Update an existing memory by ID. |
 | `automem_link_memories` | Create a typed relationship between two existing memories. |
 | `automem_correct_memory` | Store a correction and link old → new with a provenance relationship (EVOLVED_INTO or CONTRADICTS). |
+
+Policy blocks, missing approval in non-interactive contexts, and invalid update requests surface as pi tool errors. User-cancelled confirmations and duplicate detection are normal control-flow results, so the agent can stop or choose the next write path deliberately.
 
 ---
 

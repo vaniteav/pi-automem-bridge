@@ -222,30 +222,36 @@ import { registerRelationshipTools } from "../src/tools/relationship-tools";
     registerTool(tool: any) { tools[tool.name] = tool; },
   } as any);
 
-  // automem_link_memories: approvedByUser false → returns isError, no AutoMem call
-  const linkResult = await tools["automem_link_memories"].execute(
-    "test-call-id",
-    { memoryId1: "aaa", memoryId2: "bbb", relationship: "RELATES_TO", approvedByUser: false },
+  // automem_link_memories: approvedByUser false → throws, no AutoMem call
+  await assert.rejects(
+    () => tools["automem_link_memories"].execute(
+      "test-call-id",
+      { memoryId1: "aaa", memoryId2: "bbb", relationship: "RELATES_TO", approvedByUser: false },
+    ),
+    /Confirmation required/,
+    "link_memories throws when approvedByUser is false",
   );
-  assert.equal(linkResult.isError, true, "link_memories returns isError when approvedByUser is false");
-  assert.ok(linkResult.content[0].text.includes("Confirmation required"), "link_memories confirmation message");
 
-  // automem_correct_memory: approvedByUser false → returns isError, no AutoMem call
+  // automem_correct_memory: approvedByUser false → throws, no AutoMem call
   // importance: 0.9 so write policy passes and the confirmation gate is reached
-  const correctResult = await tools["automem_correct_memory"].execute(
-    "test-call-id",
-    { memoryId: "ccc", correction: "Fixed content", approvedByUser: false, importance: 0.9 },
+  await assert.rejects(
+    () => tools["automem_correct_memory"].execute(
+      "test-call-id",
+      { memoryId: "ccc", correction: "Fixed content", approvedByUser: false, importance: 0.9 },
+    ),
+    /Confirmation required/,
+    "correct_memory throws when approvedByUser is false",
   );
-  assert.equal(correctResult.isError, true, "correct_memory returns isError when approvedByUser is false");
-  assert.ok(correctResult.content[0].text.includes("Confirmation required"), "correct_memory confirmation message");
 
   // automem_correct_memory: blocked by write policy (credential-like content) even with approvedByUser: true
-  const blockedResult = await tools["automem_correct_memory"].execute(
-    "test-call-id",
-    { memoryId: "ddd", correction: "token=ghp_abc123secretXYZabcdefghijklmnopqrstuvwxyz", approvedByUser: true, importance: 0.9 },
+  await assert.rejects(
+    () => tools["automem_correct_memory"].execute(
+      "test-call-id",
+      { memoryId: "ddd", correction: "token=ghp_abc123secretXYZabcdefghijklmnopqrstuvwxyz", approvedByUser: true, importance: 0.9 },
+    ),
+    /Blocked by AutoMem write policy/,
+    "correct_memory throws when write policy blocks",
   );
-  assert.equal(blockedResult.isError, true, "correct_memory returns isError when write policy blocks");
-  assert.ok(blockedResult.content[0].text.includes("Blocked by AutoMem write policy"), "correct_memory policy block message");
 })().catch(e => { console.error(e); process.exit(1); });
 
 // UUID extraction regex — replicated from relationship-tools.ts

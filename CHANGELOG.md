@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.3 — 2026-06-18
+
+### Changed
+- Align write-tool failure behavior with pi SDK v0.79.7: policy blocks, missing approval in non-interactive contexts, and invalid update requests now throw from tool execution so pi marks them as failed tool calls.
+- `automem_propose_memory` now reports policy-block recommendations as normal proposal data instead of marking the preview itself as a failed tool call.
+- Duplicate detection and user-cancelled confirmations remain normal, non-error control-flow results.
+
 ## 0.2.2 — 2026-06-14
 
 ### Changed

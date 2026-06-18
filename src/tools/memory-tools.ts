@@ -71,7 +71,6 @@ export function registerMemoryTools(pi: ExtensionAPI) {
       return {
         content: [{ type: "text" as const, text: formatProposal(decision.action, decision.reasons, decision.normalized, similarText, similarMatches) }],
         details: { action: decision.action, reasons: decision.reasons, findings: decision.findings, candidate: decision.normalized, similarMatches },
-        isError: decision.action === "block",
       };
     },
   });
@@ -90,11 +89,7 @@ export function registerMemoryTools(pi: ExtensionAPI) {
       const decision = evaluateWritePolicy(candidate, config);
 
       if (decision.action === "block") {
-        return {
-          content: [{ type: "text" as const, text: "Blocked by AutoMem write policy.\n" + decision.reasons.map((r: string) => "- " + r).join("\n") }],
-          details: { action: decision.action, reasons: decision.reasons, findings: decision.findings },
-          isError: true,
-        };
+        throw new Error("Blocked by AutoMem write policy.\n" + decision.reasons.map((r: string) => "- " + r).join("\n"));
       }
 
       const needsConfirmation = decision.action !== "auto";
@@ -105,11 +100,7 @@ export function registerMemoryTools(pi: ExtensionAPI) {
             return { content: [{ type: "text" as const, text: "AutoMem memory write cancelled." }], details: { cancelled: true } };
           }
         } else {
-          return {
-            content: [{ type: "text" as const, text: "Confirmation required before storing this memory. Re-run with approvedByUser=true only after explicit user approval." }],
-            details: { action: decision.action, reasons: decision.reasons, candidate: decision.normalized },
-            isError: true,
-          };
+          throw new Error("Confirmation required before storing this memory. Re-run with approvedByUser=true only after explicit user approval.");
         }
       }
 
@@ -160,7 +151,6 @@ export function registerMemoryTools(pi: ExtensionAPI) {
             ].join("\n"),
           }],
           details: { duplicateDetected: true, existingMemoryId: top.id, existingContent: top.content, candidate: decision.normalized, allSimilar: similarMatches },
-          isError: false,
         };
       }
 
@@ -194,10 +184,7 @@ export function registerMemoryTools(pi: ExtensionAPI) {
     parameters: UpdateParams,
     async execute(_toolCallId, params, _signal, _onUpdate, ctx: any) {
       if (!params.memoryId) {
-        return {
-          content: [{ type: "text" as const, text: "memoryId is required for automem_update_memory." }],
-          isError: true,
-        };
+        throw new Error("memoryId is required for automem_update_memory.");
       }
 
       if (!params.approvedByUser) {
@@ -213,10 +200,7 @@ export function registerMemoryTools(pi: ExtensionAPI) {
             return { content: [{ type: "text" as const, text: "AutoMem memory update cancelled." }], details: { cancelled: true } };
           }
         } else {
-          return {
-            content: [{ type: "text" as const, text: "Confirmation required before updating this memory. Re-run with approvedByUser=true only after explicit user approval." }],
-            isError: true,
-          };
+          throw new Error("Confirmation required before updating this memory. Re-run with approvedByUser=true only after explicit user approval.");
         }
       }
 

@@ -34,10 +34,7 @@ export function registerRelationshipTools(pi: ExtensionAPI) {
       setAutoMemMcpServerName(config.mcpServerName);
 
       if (!params.approvedByUser) {
-        return {
-          content: [{ type: "text" as const, text: "Confirmation required before linking memories. Re-run with approvedByUser=true only after explicit user approval.\n\nWould link:\n  " + params.memoryId1 + " → " + params.relationship + " → " + params.memoryId2 }],
-          isError: true,
-        };
+        throw new Error("Confirmation required before linking memories. Re-run with approvedByUser=true only after explicit user approval.\n\nWould link:\n  " + params.memoryId1 + " -> " + params.relationship + " -> " + params.memoryId2);
       }
 
       const strength = typeof params.strength === "number" ? params.strength : 0.5;
@@ -68,18 +65,11 @@ export function registerRelationshipTools(pi: ExtensionAPI) {
       };
       const decision = evaluateWritePolicy(candidate, config);
       if (decision.action === "block") {
-        return {
-          content: [{ type: "text" as const, text: "Blocked by AutoMem write policy.\n" + decision.reasons.map((r: string) => "- " + r).join("\n") }],
-          details: { action: decision.action, reasons: decision.reasons, findings: decision.findings },
-          isError: true,
-        };
+        throw new Error("Blocked by AutoMem write policy.\n" + decision.reasons.map((r: string) => "- " + r).join("\n"));
       }
 
       if (!params.approvedByUser) {
-        return {
-          content: [{ type: "text" as const, text: "Confirmation required before correcting memory. Re-run with approvedByUser=true only after explicit user approval.\n\nWould correct memory " + params.memoryId + " with:\n  " + params.correction }],
-          isError: true,
-        };
+        throw new Error("Confirmation required before correcting memory. Re-run with approvedByUser=true only after explicit user approval.\n\nWould correct memory " + params.memoryId + " with:\n  " + params.correction);
       }
 
       const rel = params.relationship === "CONTRADICTS" ? "CONTRADICTS" : "EVOLVED_INTO";
