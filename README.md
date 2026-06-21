@@ -154,7 +154,8 @@ Every write goes through: normalize → secret scan → policy check → dedupe 
     "confirmCategories": ["personal", "financial", "private", "identity"],
     "blockedCategories": ["secret", "credential", "api-key", "raw-transcript"],
     "minImportanceToWrite": 0.7,
-    "dedupeBeforeWrite": true
+    "dedupeBeforeWrite": true,
+    "dedupeMinScore": 0.85
   }
 }
 ```
@@ -168,10 +169,12 @@ Every write goes through: normalize → secret scan → policy check → dedupe 
 
 ### Duplicate handling
 
-When a commit finds a close match, `automem_commit_memory` returns `DUPLICATE_DETECTED` with the existing memory's ID. Options:
+When a commit finds a close match — recall similarity at or above `dedupeMinScore` (default `0.85`) — `automem_commit_memory` returns `DUPLICATE_DETECTED` with the existing memory's ID. Options:
 1. Update it — re-call with `updateMemoryId` set to the returned ID
 2. Force a new store — set `dedupeQuery: ""` to skip the check
 3. Cancel — do nothing if the existing memory already covers it
+
+Lower `dedupeMinScore` to catch looser duplicates, or raise it to flag only near-identical ones. (Recall results without a similarity score always surface as candidates.)
 
 ---
 

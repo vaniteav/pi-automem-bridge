@@ -258,8 +258,17 @@ async function recallSimilarWithMatches(query: string, tags: string[], config: a
   }, config.turnRecall?.timeoutMs);
   const text = result.content?.[0]?.text || "No similar memories found.";
   const parsed = parseSearchResults(text);
+  // Only treat a recall hit as a dedupe candidate if it clears the similarity
+  // floor. AutoMem returns the nearest memory regardless of closeness, so an
+  // unbounded match flags brand-new memories as duplicates. Scoreless hits
+  // (some AutoMem text formats omit score) pass through to preserve old behavior.
+  const minScore = Number((config.writePolicy as any).dedupeMinScore ?? 0.85);
   const matches = parsed
     .filter(m => m.id)
+    // Non-numeric scores (undefined/null — some AutoMem formats omit score) pass
+    // through to preserve the old warn-on-any-match behavior; numeric scores
+    // must clear the floor.
+    .filter(m => typeof m.score !== "number" || m.score >= minScore)
     .map(m => ({ id: m.id, content: m.content, score: m.score }));
   return { text, matches };
 }

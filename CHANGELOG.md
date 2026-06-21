@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.5 — 2026-06-21
+
+### Added
+- `writePolicy.dedupeMinScore` (default `0.85`): duplicate detection now only fires when recall similarity clears this floor. Previously any nearest recall hit could flag a brand-new memory as a duplicate; recall results without a similarity score still surface as candidates (unchanged).
+
+### Changed
+- `loadConfig()` always returns a fresh deep clone of the defaults, so the shared `DEFAULT_CONFIG` singleton can no longer be aliased or mutated in place by validation clamps.
+
+### Removed
+- Dead config knobs with no consumers: `viewer` (`enabled`/`mode`/`port`), `behavior.injectSystemPrompt`, and `writePolicy.machineTag`. None were documented or wired to behavior; setting them never did anything.
+
 ## 0.2.4 — 2026-06-18
 
 ### Changed

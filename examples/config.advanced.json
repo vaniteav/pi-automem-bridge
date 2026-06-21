@@ -41,7 +41,8 @@
     "alwaysTag": ["source:pi"],
     "minImportanceToWrite": 0.7,
     "dedupeBeforeWrite": true,
-    "dedupeLimit": 3
+    "dedupeLimit": 3,
+    "dedupeMinScore": 0.85
   },
   "behavior": {
     "displayRecall": "hidden",

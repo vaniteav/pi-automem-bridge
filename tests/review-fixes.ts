@@ -70,6 +70,7 @@ const { automemHealth } = await import("../src/mcp-client");
 const { turnRecall } = await import("../src/recall");
 const { evaluateWritePolicy } = await import("../src/write-policy");
 const { registerRelationshipTools } = await import("../src/tools/relationship-tools");
+const { registerMemoryTools } = await import("../src/tools/memory-tools");
 const { DEFAULT_CONFIG } = await import("../src/config");
 const automemExtension = (await import("../src/index")).default;
 const { registerStatusCommand } = await import("../src/commands/status");
@@ -582,6 +583,75 @@ const { registerStatusCommand } = await import("../src/commands/status");
   );
 }
 
+// ---------------------------------------------------------------------------
+// C10 — dedupe DUPLICATE_DETECTED honors the similarity floor (dedupeMinScore).
+//       A low-score recall hit must NOT block a brand-new memory; a high-score
+//       hit still must. Scoreless hits keep the prior warn-on-any behavior.
+// ---------------------------------------------------------------------------
+
+{
+  const commitTools: Record<string, any> = {};
+  registerMemoryTools({ registerTool(t: any) { commitTools[t.name] = t; } } as any);
+
+  const dupId = "22222222-2222-2222-2222-222222222222";
+  const newId = "33333333-3333-3333-3333-333333333333";
+  const commitParams = {
+    content: "A genuinely new decision about cache eviction.",
+    type: "Decision",
+    importance: 0.9,
+    approvedByUser: true,
+  };
+
+  // Low score (0.50 < 0.85 floor): the loosely-related hit is ignored, store proceeds.
+  reset((tool) => {
+    if (tool === "recall_memory") {
+      return { content: [{ type: "text", text: "Found 1 memories:\n\n1. Something only loosely related [x] score=0.50\nID: " + dupId }] };
+    }
+    return { content: [{ type: "text", text: "Stored. ID: " + newId }] };
+  });
+  const lowScore = await commitTools["automem_commit_memory"].execute("tid", commitParams);
+  assert.ok(
+    !lowScore.details?.duplicateDetected && calls.some(c => c.tool === "store_memory"),
+    "below-floor recall hit does not block the write (no DUPLICATE_DETECTED, store happens)",
+  );
+
+  // High score (0.95 >= 0.85 floor): real near-duplicate still blocks with DUPLICATE_DETECTED.
+  reset((tool) => {
+    if (tool === "recall_memory") {
+      return { content: [{ type: "text", text: "Found 1 memories:\n\n1. Nearly the same decision [x] score=0.95\nID: " + dupId }] };
+    }
+    return { content: [{ type: "text", text: "Stored. ID: " + newId }] };
+  });
+  const highScore = await commitTools["automem_commit_memory"].execute("tid", commitParams);
+  assert.equal(
+    highScore.details?.existingMemoryId,
+    dupId,
+    "above-floor recall hit still reports DUPLICATE_DETECTED",
+  );
+  assert.ok(
+    !calls.some(c => c.tool === "store_memory"),
+    "DUPLICATE_DETECTED short-circuits before any store_memory call",
+  );
+
+  // The propose path consumes the same filtered matches: below-floor hits must
+  // not surface as a duplicate warning; above-floor hits must.
+  reset(() => ({ content: [{ type: "text", text: "Found 1 memories:\n\n1. Loosely related [x] score=0.50\nID: " + dupId }] }));
+  const proposeLow = await commitTools["automem_propose_memory"].execute("tid", commitParams);
+  assert.equal(
+    proposeLow.details?.similarMatches?.length,
+    0,
+    "propose path drops below-floor matches (no duplicate warning)",
+  );
+
+  reset(() => ({ content: [{ type: "text", text: "Found 1 memories:\n\n1. Nearly identical [x] score=0.95\nID: " + dupId }] }));
+  const proposeHigh = await commitTools["automem_propose_memory"].execute("tid", commitParams);
+  assert.equal(
+    proposeHigh.details?.similarMatches?.[0]?.id,
+    dupId,
+    "propose path keeps above-floor matches as duplicate candidates",
+  );
+}
+
 console.log("Review-fix regression tests passed:");
 console.log("- #1 mcpCall surfaces tool-level isError (health reports unhealthy)");
 console.log("- #2 turn recall filters by lowercased project tag");
@@ -600,4 +670,5 @@ console.log("- C6 same-mtime rewrite detected via file size");
 console.log("- C7 turn recall retries after lazy MCP startup miss");
 console.log("- C8 failed startup recall is retried after lazy MCP recovery");
 console.log("- C9 lazy AutoMem MCP lifecycle is surfaced to users");
+console.log("- C10 dedupe DUPLICATE_DETECTED honors the similarity floor");
 })().catch(e => { console.error(e); process.exit(1); });

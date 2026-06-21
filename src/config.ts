@@ -74,22 +74,16 @@ export interface AutoMemConfig {
     confirmCategories: string[];
     blockedCategories: string[];
     defaultSource: string;
-    machineTag: boolean;
     alwaysTag: string[];
     minImportanceToWrite: number;
     dedupeBeforeWrite: boolean;
     dedupeLimit: number;
+    dedupeMinScore: number;
   };
   behavior: {
-    injectSystemPrompt: boolean;
     displayRecall: "full" | "summary" | "hidden";
     maxContentLength: number;
     preferredContentLength: number;
-  };
-  viewer: {
-    enabled: boolean;
-    mode: "standalone" | "embedded";
-    port: number;
   };
 }
 
@@ -135,22 +129,21 @@ export const DEFAULT_CONFIG: AutoMemConfig = {
     confirmCategories: ["personal", "financial", "private", "identity"],
     blockedCategories: ["secret", "credential", "api-key", "raw-transcript"],
     defaultSource: "pi-session",
-    machineTag: true,
     alwaysTag: ["source:pi"],
     minImportanceToWrite: 0.7,
     dedupeBeforeWrite: true,
     dedupeLimit: 3,
+    // Only warn DUPLICATE_DETECTED when recall similarity is at least this high.
+    // AutoMem recall returns the nearest memory regardless of closeness, so
+    // without a floor a brand-new memory gets flagged as a dup of something
+    // loosely related. Scoreless results (some AutoMem text formats omit score)
+    // bypass the floor and keep the prior warn-on-any-match behavior.
+    dedupeMinScore: 0.85,
   },
   behavior: {
-    injectSystemPrompt: true,
     displayRecall: "summary",
     maxContentLength: 2000,
     preferredContentLength: 500,
-  },
-  viewer: {
-    enabled: false,
-    mode: "standalone",
-    port: 3000,
   },
 };
 
@@ -218,7 +211,7 @@ export function loadConfig(): AutoMemConfig {
 
   if (!existsSync(configPath)) {
     console.log("[automem] no config at " + configPath + ", using defaults");
-    return DEFAULT_CONFIG;
+    return structuredClone(DEFAULT_CONFIG);
   }
 
   let raw: any;
@@ -227,15 +220,17 @@ export function loadConfig(): AutoMemConfig {
     raw = JSON.parse(text);
   } catch (err) {
     console.error("[automem] failed to read/parse config: " + err);
-    return DEFAULT_CONFIG;
+    return structuredClone(DEFAULT_CONFIG);
   }
 
   if (typeof raw !== "object" || raw === null) {
     console.error("[automem] config root must be an object, using defaults");
-    return DEFAULT_CONFIG;
+    return structuredClone(DEFAULT_CONFIG);
   }
 
-  const config = deepMerge(DEFAULT_CONFIG, raw) as AutoMemConfig;
+  // Merge onto a fresh clone so non-overridden nested objects are never aliased
+  // to (or mutated in) the shared DEFAULT_CONFIG singleton by the clamps below.
+  const config = deepMerge(structuredClone(DEFAULT_CONFIG), raw) as AutoMemConfig;
 
   if (config.startupRecall.limit < 1 || config.startupRecall.limit > 20) {
     console.warn("[automem] startupRecall.limit out of range (1-20), clamping to 8");
