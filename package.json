@@ -1,6 +1,6 @@
 {
   "name": "pi-automem-bridge",
-  "version": "0.2.5",
+  "version": "0.3.0",
   "description": "Automatic long-term memory recall and policy-gated writes for pi agents via AutoMem MCP",
   "keywords": [
     "pi-package",
@@ -21,7 +21,6 @@
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": ">=0.78.0",
-    "@verygoodplugins/mcp-automem": "*",
     "typebox": "*"
   },
   "scripts": {

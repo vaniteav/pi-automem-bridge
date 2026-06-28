@@ -13,6 +13,7 @@ Long-term semantic memory for pi via AutoMem MCP.
 - `/automem-recall <query>` — Manually query AutoMem (debugging)
 - `automem_propose_memory` — Validate/preview a durable memory candidate without writing
 - `automem_commit_memory` — Store a policy-approved memory after confirmation or safe-auto policy
+- `automem_update_memory` — Update an existing AutoMem memory by ID (content, type, tags, importance, confidence). Use after DUPLICATE_DETECTED or when correcting a known memory in-place.
 - `automem_link_memories` — Create a typed relationship between two existing memories
 - `automem_correct_memory` — Store a correction and link old → new with provenance (EVOLVED_INTO/CONTRADICTS)
 

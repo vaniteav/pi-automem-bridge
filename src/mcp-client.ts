@@ -69,9 +69,42 @@ function loadMcpServerConfig(serverName: string): CachedServerConfig {
     throw new Error('MCP server "' + serverName + '" not found. Available: ' + available);
   }
 
+  const rawUrl = server.url || "";
+  const rawAuth = server.headers?.Authorization || "";
+
+  if (!rawUrl) {
+    throw new Error(
+      '[automem] Server "' + serverName + '" in mcp.json has no url field. ' +
+      'Expected: "url": "https://your-mcp-server.example.com/mcp"'
+    );
+  }
+  try {
+    new URL(rawUrl);
+  } catch (_e) {
+    throw new Error(
+      '[automem] URL "' + rawUrl + '" in mcp.json is not a valid URL. ' +
+      'Expected format: https://your-mcp-server.example.com/mcp'
+    );
+  }
+  if (!rawUrl.includes("/mcp")) {
+    console.warn(
+      '[automem] URL does not contain "/mcp": ' + rawUrl +
+      ' — most AutoMem deployments require the /mcp path suffix.'
+    );
+  }
+
+  const varMatch = rawAuth.match(/\$\{([^}]+)\}/);
+  if (varMatch && !process.env[varMatch[1]]) {
+    console.warn(
+      '[automem] Auth env var "' + varMatch[1] + '" is not set — AutoMem calls will be unauthorized. ' +
+      'Windows: run  setx ' + varMatch[1] + ' "your-token"  then open a new terminal. ' +
+      'Unix: add  export ' + varMatch[1] + '=your-token  to your shell profile.'
+    );
+  }
+
   const entry: CachedServerConfig = {
-    url: server.url,
-    auth: resolveEnvVars(server.headers?.Authorization || ""),
+    url: rawUrl,
+    auth: resolveEnvVars(rawAuth),
     lifecycle: server.lifecycle || "lazy",
     signature,
   };
@@ -304,6 +337,7 @@ export async function automemRecall(
 ): Promise<McpCallResult> {
   const args: Record<string, unknown> = {
     query,
+    format: "json",
     limit: options && options.limit ? options.limit : 8,
     tags: options && options.tags ? options.tags : [],
     tag_mode: options && options.tagMode ? options.tagMode : "any",

@@ -23,9 +23,21 @@ export interface FormattedMemory {
 export function parseSearchResults(text: string): FormattedMemory[] {
   if (!text || !text.trim()) return [];
 
-  // Try JSON array first
+  // Try JSON first — handles both format: "json" (object with results[]) and legacy array
   try {
     const parsed = JSON.parse(text);
+    // format: "json" returns a top-level object { results: [...], count, status }
+    if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed) && Array.isArray(parsed.results)) {
+      return parsed.results.map(function(r: any) {
+        return {
+          id: r.id || (r.memory && r.memory.id) || "",
+          type: (r.memory && r.memory.type) || r.type || "Context",
+          content: (r.memory && r.memory.content) || r.content || (r.memory && r.memory.summary) || "",
+          tags: Array.isArray(r.memory && r.memory.tags) ? r.memory.tags : (Array.isArray(r.tags) ? r.tags : []),
+          score: r.score !== undefined ? r.score : (r.final_score !== undefined ? r.final_score : r.match_score),
+        };
+      });
+    }
     if (Array.isArray(parsed)) {
       return parsed.map(function(item: any) {
         return {
@@ -38,7 +50,7 @@ export function parseSearchResults(text: string): FormattedMemory[] {
       });
     }
   } catch (_e) {
-    // Not JSON array
+    // Not JSON
   }
 
   // AutoMem MCP returns human-readable text like:

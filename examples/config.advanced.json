@@ -39,13 +39,14 @@
     "confirmCategories": ["personal", "financial", "private", "identity"],
     "blockedCategories": ["secret", "credential", "api-key", "raw-transcript"],
     "alwaysTag": ["source:pi"],
+    "defaultSource": "pi-session",
     "minImportanceToWrite": 0.7,
     "dedupeBeforeWrite": true,
     "dedupeLimit": 3,
     "dedupeMinScore": 0.85
   },
   "behavior": {
-    "displayRecall": "hidden",
+    "displayRecall": "summary",
     "maxContentLength": 2000,
     "preferredContentLength": 500
   },

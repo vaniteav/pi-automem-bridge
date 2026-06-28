@@ -9,7 +9,7 @@
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { loadConfig } from "./config";
-import { automemHealth, discoverTools, getAutoMemMcpLifecycle, setAutoMemMcpServerName } from "./mcp-client";
+import { automemHealth, discoverTools, setAutoMemMcpServerName } from "./mcp-client";
 import { startupRecall, turnRecall, type RecallResult } from "./recall";
 import { detectProject } from "./project-detect";
 import { buildContextMessage } from "./context-injector";
@@ -38,7 +38,6 @@ export default function (pi: ExtensionAPI) {
     config = loadConfig();
     setAutoMemMcpServerName(config.mcpServerName);
 
-    notifyIfLazyMcpLifecycle(ctx);
     await refreshAutoMemHealth(ctx, false);
 
     if (config.startupRecall.enabled && autoMemHealthy) {
@@ -172,20 +171,6 @@ export default function (pi: ExtensionAPI) {
     } catch (err) {
       startupRecallAttempted = false;
       ctx.ui.notify("AutoMem startup recall failed: " + err, "warning");
-    }
-  }
-
-  function notifyIfLazyMcpLifecycle(ctx: any): void {
-    try {
-      const lifecycle = getAutoMemMcpLifecycle();
-      if (lifecycle === "lazy") {
-        ctx.ui.notify(
-          'AutoMem MCP lifecycle is "lazy". For automatic memory on every session, set the automem server in ~/.pi/agent/mcp.json to "lifecycle": "keep-alive".',
-          "warning",
-        );
-      }
-    } catch (err) {
-      console.warn("[automem] could not inspect MCP lifecycle: " + err);
     }
   }
 

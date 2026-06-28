@@ -117,7 +117,9 @@ async function main() {
 
   const recall = await automemRecall("pi automem core extension phase 1", { limit: 1 });
   const recallText = recall.content?.[0]?.text || "";
-  assert.match(recallText, /Found\s+\d+\s+memories:/i, "manual recall should return AutoMem text");
+  // format: "json" returns a structured object; verify it parses with results array
+  const recallParsed = JSON.parse(recallText);
+  assert.ok(typeof recallParsed === "object" && Array.isArray(recallParsed.results), "recall should return JSON object with results array");
 
   const startup = await startupRecall({
     ...config,

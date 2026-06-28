@@ -519,31 +519,22 @@ const { registerStatusCommand } = await import("../src/commands/status");
   );
 }
 
-// C9 [MED] — lazy AutoMem MCP lifecycle is user-visible because it makes the
-// bridge appear unreliable. keep-alive should be the documented happy path.
+// C9 [MED] — /automem-status surfaces health and config; does NOT warn about
+// MCP lifecycle (the bridge's HTTP calls are unaffected by pi's MCP adapter
+// lifecycle setting, so surfacing it as a warning was misleading and removed).
 {
   const mcpPath = join(home, ".pi", "agent", "mcp.json");
   writeFileSync(
     mcpPath,
-    JSON.stringify({ mcpServers: { automem: { url: "http://lazy.local/mcp", headers: {}, lifecycle: "lazy" } } }),
+    JSON.stringify({ mcpServers: { automem: { url: "http://status.local/mcp", headers: {}, lifecycle: "lazy" } } }),
     "utf8",
   );
 
   reset((tool) => {
     if (tool === "tools/list") return { tools: [{ name: "check_database_health" }] };
-    if (tool === "check_database_health") return { content: [{ type: "text", text: "{\"memory_count\":1}" }] };
+    if (tool === "check_database_health") return { content: [{ type: "text", text: "{\"memory_count\":42}" }] };
     return { content: [{ type: "text", text: "ok" }] };
   });
-
-  const handlers: Record<string, any[]> = {};
-  automemExtension({
-    on(name: string, handler: any) {
-      handlers[name] = handlers[name] || [];
-      handlers[name].push(handler);
-    },
-    registerCommand() {},
-    registerTool() {},
-  } as any);
 
   const notifications: Array<{ message: string; level: string }> = [];
   const ctx = {
@@ -555,31 +546,21 @@ const { registerStatusCommand } = await import("../src/commands/status");
     },
   };
 
-  for (const h of handlers.session_start || []) await h({}, ctx);
-  assert.ok(
-    notifications.some(n => n.level === "warning" && n.message.includes('"lifecycle": "keep-alive"')),
-    "session_start warns when AutoMem MCP lifecycle is lazy",
-  );
-
   const commands: Record<string, any> = {};
   registerStatusCommand({ registerCommand(name: string, opts: any) { commands[name] = opts; } });
-  notifications.length = 0;
   await commands["automem-status"].handler("", ctx);
-  assert.ok(
-    notifications.some(n => n.message === "MCP lifecycle: lazy" && n.level === "warning"),
-    "/automem-status reports lazy lifecycle as a warning",
-  );
 
-  writeFileSync(
-    mcpPath,
-    JSON.stringify({ mcpServers: { automem: { url: "http://keep.local/mcp", headers: {}, lifecycle: "keep-alive" } } }),
-    "utf8",
-  );
-  notifications.length = 0;
-  await commands["automem-status"].handler("", ctx);
   assert.ok(
-    notifications.some(n => n.message === "MCP lifecycle: keep-alive" && n.level === "info"),
-    "/automem-status reports keep-alive lifecycle without warning severity",
+    notifications.some(n => n.level === "success" && n.message.includes("42 memories")),
+    "/automem-status reports healthy with memory count",
+  );
+  assert.ok(
+    notifications.some(n => n.message.includes("startup=") && n.message.includes("turn=")),
+    "/automem-status reports config summary",
+  );
+  assert.ok(
+    !notifications.some(n => n.message.includes("lifecycle")),
+    "/automem-status does not warn about MCP lifecycle (irrelevant to bridge's HTTP calls)",
   );
 }
 
@@ -669,6 +650,6 @@ console.log("- C5 tool discovery re-runs on mcp.json change");
 console.log("- C6 same-mtime rewrite detected via file size");
 console.log("- C7 turn recall retries after lazy MCP startup miss");
 console.log("- C8 failed startup recall is retried after lazy MCP recovery");
-console.log("- C9 lazy AutoMem MCP lifecycle is surfaced to users");
+console.log("- C9 /automem-status reports health+config, no lifecycle warning");
 console.log("- C10 dedupe DUPLICATE_DETECTED honors the similarity floor");
 })().catch(e => { console.error(e); process.exit(1); });

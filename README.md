@@ -45,19 +45,39 @@ Recall display, write policy, and per-project scoping are all configurable — s
 
 ## Before you begin
 
-This package does not include pi or AutoMem — it connects them. You need both running independently first:
+This bridge connects pi to AutoMem's MCP tools over HTTP. You need:
 
-1. **[pi](https://github.com/earendil-works/pi)** — the agent this extension runs inside
-2. **[AutoMem](https://github.com/verygoodplugins/automem)** — the graph-vector memory service (self-hosted or Railway)
-3. **[mcp-automem](https://github.com/verygoodplugins/mcp-automem)** — the MCP bridge that exposes AutoMem's tools over the MCP protocol
+1. **[pi](https://github.com/earendil-works/pi)** — the agent this extension runs inside.
+2. **An AutoMem MCP HTTP endpoint** — the URL the bridge posts requests to. This is the [mcp-automem](https://github.com/verygoodplugins/mcp-automem) sidecar deployed as a service (Railway or Docker). It must be the HTTP server mode — not the stdio subprocess mode used by Claude Desktop or Cursor.
+3. **The [AutoMem](https://github.com/verygoodplugins/automem) backend** — the graph-vector store the sidecar connects to (Railway or self-hosted Docker).
 
-Once those three are in place, follow the setup below.
+The bridge works without an endpoint configured — it degrades gracefully to offline mode. In offline mode, startup and turn-level recall are disabled, but pi runs normally and the write-policy tools still validate candidates.
+
+### Finding your endpoint URL
+
+**Railway deployment (most common)**
+
+Open your Railway project → select the **mcp-automem** service → **Settings → Domains**. Your endpoint URL is:
+
+```
+https://<your-service-name>.up.railway.app/mcp
+```
+
+The `/mcp` suffix and `https://` scheme are both required.
+
+Your auth token is the `AUTOMEM_API_TOKEN` variable set on the mcp-automem service. Open the service → **Variables** → copy the value of `AUTOMEM_API_TOKEN`.
+
+**Local Docker**
+
+If you're running the mcp-automem sidecar as a local HTTP server (not the stdio subprocess), it typically listens on `http://localhost:3001/mcp`. Check the port in your Docker Compose or mcp-automem config.
+
+**Not sure which you have?** If you ran `npx @verygoodplugins/mcp-automem setup` or `install` to configure Claude Desktop, Cursor, or another local agent, that installer set up a stdio subprocess — which this bridge cannot use. You need the sidecar deployed as a separate HTTP service. See [mcp-automem Railway deployment](https://github.com/verygoodplugins/mcp-automem).
 
 ---
 
 ## Setup
 
-Three steps to a working install, then optional tuning. The package install is automatic — the **only** thing you must configure by hand is the connection to your own AutoMem server, because that carries your private server URL and token, and no package can (or should) write those for you.
+Three steps to a working install, then optional tuning. The only thing you must configure by hand is the connection to your AutoMem server — the package has no way to know your private URL and token.
 
 ### 1. Install the package
 
@@ -65,31 +85,44 @@ Three steps to a working install, then optional tuning. The package install is a
 pi install npm:pi-automem-bridge
 ```
 
-This registers the extension's tools, commands, and recall hooks with pi automatically. Nothing runs yet — it has no server to talk to.
+This registers the extension's tools, commands, and recall hooks with pi automatically. Nothing runs until you complete step 2.
 
 ### 2. Connect it to your AutoMem server — *required*
 
-Add an MCP server entry named `automem` to `~/.pi/agent/mcp.json`, pointing at the AutoMem instance from [Before you begin](#before-you-begin):
+Add an MCP server entry named `automem` to `~/.pi/agent/mcp.json`:
 
 ```json
 {
   "mcpServers": {
     "automem": {
-      "url": "https://your-automem-server.example.com/mcp",
+      "url": "https://your-mcp-automem-service.up.railway.app/mcp",
       "headers": {
         "Authorization": "Bearer ${AUTOMEM_TOKEN}"
-      },
-      "lifecycle": "keep-alive"
+      }
     }
   }
 }
 ```
 
-This is the one step that can't be automated: the package has no way to know your server's address or auth token, and writing credentials on your behalf would be unsafe. Use `${ENV_VAR}` interpolation for the token — never hardcode secrets. The entry must be named `automem` (the name the extension looks for by default), or set a different name via `mcpServerName` in step 4.
+The URL must include `https://` and end with `/mcp`. Use `${ENV_VAR}` for the token — never hardcode secrets in this file. The entry must be named `automem` (the default the extension looks for), or configure a different name via `mcpServerName` in step 4.
 
-`"lifecycle": "keep-alive"` is strongly recommended. pi-mcp-adapter defaults MCP servers to `"lazy"`, which means the AutoMem sidecar may not connect until a tool is called. Memory should be available from the first prompt, so `keep-alive` connects at startup and reconnects automatically if the connection drops. `eager` also connects at startup, but it does not auto-reconnect.
+**Don't want to hand-edit JSON?** Tell pi: *"add an `automem` MCP server to my `mcp.json` at `https://my-server.example.com/mcp`, using `${AUTOMEM_TOKEN}` for auth."* Keep the real token in your environment.
 
-**Don't want to hand-edit JSON?** pi is a coding agent — tell it to do it: *"add an `automem` MCP server to my `mcp.json` at `https://my-server.example.com/mcp`, using `${AUTOMEM_TOKEN}` for auth."* Keep the real token in your environment so it never touches the file or the chat.
+#### Setting your token as an environment variable
+
+**Windows (PowerShell):**
+```powershell
+setx AUTOMEM_TOKEN "paste-your-token-here"
+```
+`setx` persists the variable for all future sessions. **Open a new terminal window after running it** — the current window will not see the new value.
+
+**macOS / Linux:**
+```bash
+echo 'export AUTOMEM_TOKEN="paste-your-token-here"' >> ~/.zshrc   # or ~/.bashrc
+source ~/.zshrc
+```
+
+Verify with `echo $AUTOMEM_TOKEN` (should print your token, not blank).
 
 ### 3. Reload pi
 
@@ -211,7 +244,7 @@ Controls how much of the recalled context shows in chat. Injection into the syst
 
 Recall is best-effort context enrichment, so it runs on a short, bounded timeout instead of the full MCP request timeout — a slow or unreachable AutoMem server degrades gracefully to no injection rather than blocking your prompt. Tune with `turnRecall.timeoutMs` (default `8000`) and `startupRecall.timeoutMs` (default `15000`).
 
-pi-mcp-adapter supports `lazy`, `eager`, and `keep-alive` MCP lifecycles. Use `keep-alive` for AutoMem. The bridge also performs an eager health check at session start to warm the AutoMem connection; if that early check races startup and misses, later turns retry with a short timeout and run the missed startup recall after AutoMem recovers. `/automem-status` is still useful for manual diagnostics, but it is not required as a startup kick.
+The bridge performs an eager health check at session start to warm the AutoMem connection. If that early check races startup and misses, later turns retry with a short timeout and run the missed startup recall after AutoMem recovers. `/automem-status` is useful for manual diagnostics.
 
 ---
 
