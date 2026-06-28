@@ -77,7 +77,7 @@ If you're running the mcp-automem sidecar as a local HTTP server (not the stdio 
 
 ## Setup
 
-Three steps to a working install, then optional tuning. The only thing you must configure by hand is the connection to your AutoMem server — the package has no way to know your private URL and token.
+Four steps to a working install, then optional tuning. The only things you must configure by hand are your auth token and the server URL — the package has no way to know your private credentials.
 
 ### 1. Install the package
 
@@ -85,9 +85,27 @@ Three steps to a working install, then optional tuning. The only thing you must 
 pi install npm:pi-automem-bridge
 ```
 
-This registers the extension's tools, commands, and recall hooks with pi automatically. Nothing runs until you complete step 2.
+This registers the extension's tools, commands, and recall hooks with pi automatically. Nothing runs until you complete the remaining steps.
 
-### 2. Connect it to your AutoMem server — *required*
+### 2. Set your auth token as an environment variable — *required*
+
+Your AutoMem token must be in the environment before the bridge can use it — never paste it directly into config files.
+
+**Windows (PowerShell):**
+```powershell
+setx AUTOMEM_TOKEN "paste-your-token-here"
+```
+`setx` persists the variable for all future sessions. **Open a new terminal window after running it** — the current window will not see the new value.
+
+**macOS / Linux:**
+```bash
+echo 'export AUTOMEM_TOKEN="paste-your-token-here"' >> ~/.zshrc   # or ~/.bashrc
+source ~/.zshrc
+```
+
+Verify with `echo $AUTOMEM_TOKEN` (should print your token, not blank).
+
+### 3. Connect it to your AutoMem server — *required*
 
 Add an MCP server entry named `automem` to `~/.pi/agent/mcp.json`:
 
@@ -104,31 +122,15 @@ Add an MCP server entry named `automem` to `~/.pi/agent/mcp.json`:
 }
 ```
 
-The URL must include `https://` and end with `/mcp`. Use `${ENV_VAR}` for the token — never hardcode secrets in this file. The entry must be named `automem` (the default the extension looks for), or configure a different name via `mcpServerName` in step 4.
+The URL must include `https://` and end with `/mcp`. The `${AUTOMEM_TOKEN}` reference reads the variable you set in step 2 — never hardcode the token here. The entry must be named `automem` (the default the extension looks for), or configure a different name via `mcpServerName` in step 5.
 
-**Don't want to hand-edit JSON?** Tell pi: *"add an `automem` MCP server to my `mcp.json` at `https://my-server.example.com/mcp`, using `${AUTOMEM_TOKEN}` for auth."* Keep the real token in your environment.
+**Don't want to hand-edit JSON?** Tell pi: *"add an `automem` MCP server to my `mcp.json` at `https://my-server.example.com/mcp`, using `${AUTOMEM_TOKEN}` for auth."*
 
-#### Setting your token as an environment variable
-
-**Windows (PowerShell):**
-```powershell
-setx AUTOMEM_TOKEN "paste-your-token-here"
-```
-`setx` persists the variable for all future sessions. **Open a new terminal window after running it** — the current window will not see the new value.
-
-**macOS / Linux:**
-```bash
-echo 'export AUTOMEM_TOKEN="paste-your-token-here"' >> ~/.zshrc   # or ~/.bashrc
-source ~/.zshrc
-```
-
-Verify with `echo $AUTOMEM_TOKEN` (should print your token, not blank).
-
-### 3. Reload pi
+### 4. Reload pi
 
 Start a new session or run `/reload`. **That's it — recall is now automatic and the bridge runs on sensible defaults** (`safe-auto` writes, `summary` recall display). From here, just work: pi recalls on its own and saves routine decisions automatically — tell it *"remember this"* anytime you want something kept. Confirm everything's live with `/automem-status`.
 
-### 4. Tune behavior — *optional*
+### 5. Tune behavior — *optional*
 
 The bridge works fully without this file. To customize recall queries, write policy, per-project scoping, or display mode, create `~/.pi/agent/automem.json` — any value you leave out falls back to its default. (Or just tell pi what you want — *"only auto-save bug fixes and technical decisions, and hide the recall block"* — and have it write the file for you.)
 
