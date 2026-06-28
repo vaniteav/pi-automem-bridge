@@ -107,24 +107,44 @@ Verify with `echo $AUTOMEM_TOKEN` (should print your token, not blank).
 
 ### 3. Connect it to your AutoMem server — *required*
 
-Add an MCP server entry named `automem` to `~/.pi/agent/mcp.json`:
+The URL must include `https://` and end with `/mcp`. The `${AUTOMEM_TOKEN}` reference reads the variable you set in step 2 — never hardcode the token here. The entry must be named `automem` (the default the extension looks for), or configure a different name via `mcpServerName` in step 5.
+
+**Let pi write it (works for all cases):**
+
+Open pi and say:
+
+> *"Add an `automem` MCP server to my `~/.pi/agent/mcp.json` at `https://YOUR-URL/mcp`, bearer auth using `${AUTOMEM_TOKEN}`. Keep any existing server entries."*
+
+Pi handles both a missing file and an existing one with other servers — you just substitute your URL.
+
+**Or edit the file yourself:**
+
+*No mcp.json yet* — create `~/.pi/agent/mcp.json`:
 
 ```json
 {
   "mcpServers": {
     "automem": {
-      "url": "https://your-mcp-automem-service.up.railway.app/mcp",
-      "headers": {
-        "Authorization": "Bearer ${AUTOMEM_TOKEN}"
-      }
+      "url": "https://YOUR-URL/mcp",
+      "headers": { "Authorization": "Bearer ${AUTOMEM_TOKEN}" }
     }
   }
 }
 ```
 
-The URL must include `https://` and end with `/mcp`. The `${AUTOMEM_TOKEN}` reference reads the variable you set in step 2 — never hardcode the token here. The entry must be named `automem` (the default the extension looks for), or configure a different name via `mcpServerName` in step 5.
+*Already have a mcp.json with other servers* — add the `automem` block alongside your existing entries:
 
-**Don't want to hand-edit JSON?** Tell pi: *"add an `automem` MCP server to my `mcp.json` at `https://my-server.example.com/mcp`, using `${AUTOMEM_TOKEN}` for auth."*
+```json
+{
+  "mcpServers": {
+    "your-existing-server": { "...": "..." },
+    "automem": {
+      "url": "https://YOUR-URL/mcp",
+      "headers": { "Authorization": "Bearer ${AUTOMEM_TOKEN}" }
+    }
+  }
+}
+```
 
 ### 4. Reload pi
 
