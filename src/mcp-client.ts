@@ -1,14 +1,16 @@
 /**
  * mcp-client.ts - JSON-RPC client for AutoMem MCP sidecar.
  *
- * Reads connection info from pi's mcp.json (url + auth header).
- * All calls go through the MCP tools/call endpoint.
+ * Reads connection info from pi's mcp.json. Supports two transports:
+ *   - HTTP  — server entry has a `url` field (Railway, Docker HTTP mode)
+ *   - Stdio — server entry has a `command` field (local subprocess, wizard installs)
  */
 
 import { readFileSync, existsSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
 import { resolveEnvVars } from "./config";
+import { HttpTransport, StdioTransport, type Transport } from "./transport";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -31,13 +33,21 @@ export type McpLifecycle = "lazy" | "eager" | "keep-alive" | string;
 // MCP config reader
 // ---------------------------------------------------------------------------
 
-// Cache the parsed server config per server name to keep readFileSync + JSON
-// parse off the per-turn recall hot path. The cache is validated against a
-// cheap stat signature (mtime + size — the same quick-check make/rsync use), so
-// an in-place mcp.json edit is still picked up even within a single mtime tick.
-// An empty signature (stat failed) never matches, forcing a fresh read.
-interface CachedServerConfig { url: string; auth: string; lifecycle: McpLifecycle; signature: string }
+interface CachedServerConfig {
+  // HTTP transport
+  url?: string;
+  auth?: string;
+  // Stdio transport
+  command?: string;
+  args?: string[];
+  spawnEnv?: Record<string, string>;
+  // Common
+  lifecycle: McpLifecycle;
+  signature: string;
+}
+
 let mcpConfigCache: Map<string, CachedServerConfig> = new Map();
+let transportCache: Map<string, Transport> = new Map();
 
 function loadMcpServerConfig(serverName: string): CachedServerConfig {
   const mcpJsonPath = resolve(homedir(), ".pi", "agent", "mcp.json");
@@ -55,12 +65,25 @@ function loadMcpServerConfig(serverName: string): CachedServerConfig {
   const cached = mcpConfigCache.get(serverName);
   if (cached && signature !== "" && cached.signature === signature) return cached;
 
-  // The file changed on disk (or the stat failed). The endpoint may now expose
-  // different tools, so drop the discovery cache too.
-  if (cached) discoveredTools = null;
+  // Config changed — drop discovery cache and shut down the existing transport
+  if (cached) {
+    discoveredTools = null;
+    const oldTransport = transportCache.get(serverName);
+    if (oldTransport) {
+      oldTransport.shutdown().catch(function() {});
+      transportCache.delete(serverName);
+    }
+  }
 
   const mcpJson = JSON.parse(readFileSync(mcpJsonPath, "utf8")) as {
-    mcpServers?: Record<string, { url: string; headers?: Record<string, string>; lifecycle?: string }>;
+    mcpServers?: Record<string, {
+      url?: string;
+      headers?: Record<string, string>;
+      command?: string;
+      args?: string[];
+      env?: Record<string, string>;
+      lifecycle?: string;
+    }>;
   };
 
   const server = mcpJson.mcpServers ? mcpJson.mcpServers[serverName] : undefined;
@@ -69,74 +92,96 @@ function loadMcpServerConfig(serverName: string): CachedServerConfig {
     throw new Error('MCP server "' + serverName + '" not found. Available: ' + available);
   }
 
-  const rawUrl = server.url || "";
-  const rawAuth = server.headers?.Authorization || "";
+  const entry: CachedServerConfig = { lifecycle: server.lifecycle || "lazy", signature };
 
-  if (!rawUrl) {
+  if (server.url) {
+    // HTTP transport
+    const rawUrl = server.url;
+    try {
+      new URL(rawUrl);
+    } catch (_e) {
+      throw new Error(
+        '[automem] URL "' + rawUrl + '" in mcp.json is not a valid URL. ' +
+        'Expected format: https://your-mcp-server.example.com/mcp'
+      );
+    }
+    if (!rawUrl.includes("/mcp")) {
+      console.warn(
+        '[automem] URL does not contain "/mcp": ' + rawUrl +
+        ' — most AutoMem deployments require the /mcp path suffix.'
+      );
+    }
+    const rawAuth = server.headers?.Authorization || "";
+    const varMatch = rawAuth.match(/\$\{([^}]+)\}/);
+    if (varMatch && !process.env[varMatch[1]]) {
+      console.warn(
+        '[automem] Auth env var "' + varMatch[1] + '" is not set — AutoMem calls will be unauthorized. ' +
+        'Windows: run  setx ' + varMatch[1] + ' "your-token"  then open a new terminal. ' +
+        'Unix: add  export ' + varMatch[1] + '=your-token  to your shell profile.'
+      );
+    }
+    entry.url = rawUrl;
+    entry.auth = resolveEnvVars(rawAuth);
+
+  } else if (server.command) {
+    // Stdio transport
+    entry.command = server.command;
+    entry.args = server.args || [];
+    entry.spawnEnv = {};
+    if (server.env) {
+      for (const [k, v] of Object.entries(server.env)) {
+        entry.spawnEnv[k] = resolveEnvVars(v);
+      }
+    }
+
+  } else {
     throw new Error(
-      '[automem] Server "' + serverName + '" in mcp.json has no url field. ' +
-      'Expected: "url": "https://your-mcp-server.example.com/mcp"'
-    );
-  }
-  try {
-    new URL(rawUrl);
-  } catch (_e) {
-    throw new Error(
-      '[automem] URL "' + rawUrl + '" in mcp.json is not a valid URL. ' +
-      'Expected format: https://your-mcp-server.example.com/mcp'
-    );
-  }
-  if (!rawUrl.includes("/mcp")) {
-    console.warn(
-      '[automem] URL does not contain "/mcp": ' + rawUrl +
-      ' — most AutoMem deployments require the /mcp path suffix.'
+      '[automem] Server "' + serverName + '" in mcp.json must have either ' +
+      '"url" (HTTP transport) or "command" (stdio transport).\n' +
+      '  HTTP:  "url": "https://your-service.up.railway.app/mcp"\n' +
+      '  Stdio: "command": "mcp-automem", "args": ["server"]'
     );
   }
 
-  const varMatch = rawAuth.match(/\$\{([^}]+)\}/);
-  if (varMatch && !process.env[varMatch[1]]) {
-    console.warn(
-      '[automem] Auth env var "' + varMatch[1] + '" is not set — AutoMem calls will be unauthorized. ' +
-      'Windows: run  setx ' + varMatch[1] + ' "your-token"  then open a new terminal. ' +
-      'Unix: add  export ' + varMatch[1] + '=your-token  to your shell profile.'
-    );
-  }
-
-  const entry: CachedServerConfig = {
-    url: rawUrl,
-    auth: resolveEnvVars(rawAuth),
-    lifecycle: server.lifecycle || "lazy",
-    signature,
-  };
   mcpConfigCache.set(serverName, entry);
   return entry;
 }
 
 // ---------------------------------------------------------------------------
-// Response parsing — handles both JSON and text/event-stream (SSE)
+// Transport management
 // ---------------------------------------------------------------------------
 
-async function parseJsonRpcResponse(resp: Response): Promise<any> {
-  const ct = resp.headers.get("content-type") || "";
-  if (ct.includes("text/event-stream")) {
-    const text = await resp.text();
-    // SSE lines are "data: <json>\n"; find the last non-empty data line
-    const dataLine = text
-      .split("\n")
-      .map(function(l: string) { return l.trim(); })
-      .filter(function(l: string) { return l.startsWith("data:") && l.length > 5; })
-      .pop();
-    if (!dataLine) throw new Error("SSE response contained no data lines");
-    return JSON.parse(dataLine.slice(5).trim());
+async function getOrCreateTransport(serverName: string, cfg: CachedServerConfig): Promise<Transport> {
+  const existing = transportCache.get(serverName);
+  if (existing && existing.isHealthy()) return existing;
+
+  let transport: Transport;
+
+  if (cfg.url) {
+    transport = new HttpTransport(cfg.url, cfg.auth || "");
+  } else if (cfg.command) {
+    const stdio = new StdioTransport(cfg.command, cfg.args, cfg.spawnEnv);
+    await stdio.initialize();
+    transport = stdio;
+  } else {
+    throw new Error("[automem] No transport configured for server " + serverName);
   }
-  return resp.json();
+
+  transportCache.set(serverName, transport);
+  return transport;
+}
+
+export async function shutdownAllTransports(): Promise<void> {
+  for (const [, transport] of transportCache) {
+    await transport.shutdown().catch(function() {});
+  }
+  transportCache.clear();
 }
 
 // ---------------------------------------------------------------------------
-// JSON-RPC client
+// Server name
 // ---------------------------------------------------------------------------
 
-let callId = 0;
 let configuredServerName = process.env.AUTOMEM_MCP_SERVER || "automem";
 
 export function setAutoMemMcpServerName(serverName: string | undefined): void {
@@ -145,6 +190,9 @@ export function setAutoMemMcpServerName(serverName: string | undefined): void {
     if (newName !== configuredServerName) {
       discoveredTools = null;
       mcpConfigCache = new Map();
+      const old = transportCache.get(configuredServerName);
+      if (old) old.shutdown().catch(function() {});
+      transportCache.clear();
       configuredServerName = newName;
     }
   }
@@ -159,6 +207,10 @@ export function getAutoMemMcpLifecycle(): McpLifecycle {
   return loadMcpServerConfig(serverName).lifecycle;
 }
 
+// ---------------------------------------------------------------------------
+// Core JSON-RPC call
+// ---------------------------------------------------------------------------
+
 async function mcpCall(
   tool: string,
   args: Record<string, unknown>,
@@ -166,55 +218,23 @@ async function mcpCall(
 ): Promise<McpCallResult> {
   const serverName = getAutoMemMcpServerName();
   const cfg = loadMcpServerConfig(serverName);
+  const transport = await getOrCreateTransport(serverName, cfg);
 
-  const body = {
-    jsonrpc: "2.0",
-    id: ++callId,
-    method: "tools/call",
-    params: { name: tool, arguments: args },
+  const payload = (await transport.rpc("tools/call", { name: tool, arguments: args }, timeoutMs)) as {
+    result?: McpCallResult;
+    error?: { code: number; message: string };
   };
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    const resp = await fetch(cfg.url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(cfg.auth ? { Authorization: cfg.auth } : {}),
-        Accept: "application/json, text/event-stream",
-      },
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
-
-    if (!resp.ok) {
-      const text = await resp.text().catch(function() { return ""; });
-      throw new Error("MCP HTTP " + resp.status + ": " + text.slice(0, 200));
-    }
-
-    const payload = (await parseJsonRpcResponse(resp)) as {
-      result?: McpCallResult;
-      error?: { code: number; message: string };
-    };
-
-    if (payload.error) {
-      throw new Error("MCP error: " + payload.error.message);
-    }
-
-    const result = payload.result || { content: [] };
-    // A tool-level failure is reported as HTTP 200 with isError:true (no
-    // JSON-RPC error). Surface it as a thrown error so callers don't treat a
-    // failed health check / store / update as success.
-    if (result.isError) {
-      const errText = result.content && result.content[0] ? result.content[0].text : undefined;
-      throw new Error("MCP tool error: " + (errText || "tool reported isError"));
-    }
-    return result;
-  } finally {
-    clearTimeout(timeout);
+  if (payload.error) {
+    throw new Error("MCP error: " + payload.error.message);
   }
+
+  const result = payload.result || { content: [] };
+  if (result.isError) {
+    const errText = result.content && result.content[0] ? result.content[0].text : undefined;
+    throw new Error("MCP tool error: " + (errText || "tool reported isError"));
+  }
+  return result;
 }
 
 // ---------------------------------------------------------------------------
@@ -223,46 +243,15 @@ async function mcpCall(
 
 let discoveredTools: Map<string, string> | null = null;
 
-/**
- * Discover available tools from the MCP server via tools/list.
- * Returns a Map of normalized tool name → actual tool name.
- * Cached after first call.
- */
 export async function discoverTools(): Promise<Map<string, string>> {
-  // Load config first — if mcp.json changed on disk, loadMcpServerConfig drops
-  // the discovery cache, so this must run before the early return below.
   const serverName = getAutoMemMcpServerName();
   const cfg = loadMcpServerConfig(serverName);
 
   if (discoveredTools) return discoveredTools;
 
-  const body = {
-    jsonrpc: "2.0",
-    id: ++callId,
-    method: "tools/list",
-    params: {},
-  };
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15000);
-
   try {
-    const resp = await fetch(cfg.url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(cfg.auth ? { Authorization: cfg.auth } : {}),
-        Accept: "application/json, text/event-stream",
-      },
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
-
-    if (!resp.ok) {
-      throw new Error("MCP tools/list HTTP " + resp.status);
-    }
-
-    const payload = (await parseJsonRpcResponse(resp)) as {
+    const transport = await getOrCreateTransport(serverName, cfg);
+    const payload = (await transport.rpc("tools/list", {}, 15000)) as {
       result?: { tools?: Array<{ name: string }> };
       error?: { code: number; message: string };
     };
@@ -275,11 +264,9 @@ export async function discoverTools(): Promise<Map<string, string>> {
     const map = new Map<string, string>();
     for (const t of tools) {
       map.set(t.name.toLowerCase(), t.name);
-      // Also index without automem_ prefix for fuzzy matching
       if (t.name.toLowerCase().startsWith("automem_")) {
         map.set(t.name.toLowerCase().replace("automem_", ""), t.name);
       }
-      // Also index with automem_ prefix for reverse lookups
       map.set("automem_" + t.name.toLowerCase(), t.name);
     }
 
@@ -288,7 +275,6 @@ export async function discoverTools(): Promise<Map<string, string>> {
     return map;
   } catch (err) {
     console.warn("[automem] tools/list failed, using default tool names: " + err);
-    // Fallback: use actual server tool names (no automem_ prefix)
     discoveredTools = new Map<string, string>([
       ["recall_memory", "recall_memory"],
       ["automem_recall_memory", "recall_memory"],
@@ -304,15 +290,9 @@ export async function discoverTools(): Promise<Map<string, string>> {
       ["automem_delete_memory", "delete_memory"],
     ]);
     return discoveredTools;
-  } finally {
-    clearTimeout(timeout);
   }
 }
 
-/**
- * Resolve a logical tool name to the actual server tool name.
- * e.g. "recall_memory" → the actual server tool name discovered from tools/list.
- */
 export function resolveToolName(logicalName: string): string {
   if (!discoveredTools) return logicalName;
   const key = logicalName.toLowerCase();

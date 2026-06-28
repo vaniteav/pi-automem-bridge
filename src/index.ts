@@ -9,7 +9,7 @@
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { loadConfig } from "./config";
-import { automemHealth, discoverTools, setAutoMemMcpServerName } from "./mcp-client";
+import { automemHealth, discoverTools, setAutoMemMcpServerName, shutdownAllTransports } from "./mcp-client";
 import { startupRecall, turnRecall, type RecallResult } from "./recall";
 import { detectProject } from "./project-detect";
 import { buildContextMessage } from "./context-injector";
@@ -121,6 +121,7 @@ export default function (pi: ExtensionAPI) {
 
   // session_shutdown - Cleanup
   pi.on("session_shutdown", async function(_event: any, _ctx: any) {
+    await shutdownAllTransports();
     autoMemHealthy = false;
     autoMemCount = undefined;
     startupInjected = false;
