@@ -3,17 +3,17 @@
 ## 0.3.0 — 2026-06-28
 
 ### Fixed
-- **Structured recall**: `recall_memory` calls now request `format: "json"` from the server, returning a structured JSON object instead of human-readable text. The `parseSearchResults` parser handles this object format (top-level `{ results: [...] }`) as the primary path, replacing the fragile multi-path text parser that could miss IDs, types, and scores. The text-format fallback is retained for defense.
+- **Structured recall**: `recall_memory` calls now request `format: "json"` from the server, returning a structured JSON object instead of human-readable text. The `parseSearchResults` parser handles this object format (top-level `{ results: [...] }`) as the primary path. The text-format parser is retained as a fallback.
 - **Actionable setup errors**: `mcp.json` URL validation now catches missing `https://` scheme and missing `/mcp` path suffix at config-load time with a plain-English error instead of an opaque `TypeError: Invalid URL` or `MCP HTTP 404` deep in the call stack.
-- **Token env var warning**: if the auth header references an env var (e.g. `${AUTOMEM_TOKEN}`) that is not set, the bridge now warns at startup with exact `setx` / `export` instructions instead of silently sending an empty Bearer token and getting 401 errors.
-- **Misleading lifecycle warning removed**: the bridge warned when `mcp.json` had `lifecycle: "lazy"`, claiming it would delay AutoMem availability. This was wrong — the bridge makes independent HTTP calls unaffected by pi's MCP adapter lifecycle. The warning and the `lifecycle: "keep-alive"` recommendation in the README are both removed.
+- **Token env var warning**: if the auth header references an env var (e.g. `${AUTOMEM_TOKEN}`) that is not set, the bridge now warns at startup with exact `setx` / `export` instructions, catching the missing variable early so the auth issue surfaces immediately with instructions to fix it.
+- **Lifecycle config no longer flagged**: the bridge connects to AutoMem via direct HTTP, independent of pi's MCP adapter lifecycle settings. The status command and session start no longer warn about `lifecycle: "lazy"`, and the `lifecycle: "keep-alive"` recommendation is removed from the README — it has no effect on bridge behavior.
 - **`automem_update_memory` missing from SKILL.md**: the tool has existed since v0.2.5 but was absent from the skill listing. Added.
 
 ### Changed
 - README "Before you begin" rewritten: clarifies that users need an AutoMem MCP **HTTP endpoint** (mcp-automem sidecar on Railway or Docker), not a local mcp-automem install. The stdio subprocess mode used by Claude Desktop/Cursor cannot be used by this bridge.
 - README adds Railway-specific setup path: how to find the endpoint URL and auth token in the Railway dashboard.
 - README adds Windows env var setup (`setx`, new-terminal requirement) and Unix equivalent.
-- `examples/config.advanced.json`: `displayRecall` corrected from `"hidden"` to `"summary"` (the default) to avoid silently changing behavior when copying the example. Added missing `writePolicy.defaultSource`.
+- `examples/config.advanced.json`: `displayRecall` set to `"summary"` to match the actual default — `"hidden"` suppresses the recall notification entirely, which is not the right starting point for most users. Added missing `writePolicy.defaultSource`.
 - `prompts/automem-guidelines.md`: `automem_update_memory` promoted from a passing mention to a first-class write behavior entry.
 - `package.json`: removed `@verygoodplugins/mcp-automem` from `peerDependencies` — it is a deployed service, not a local package to install alongside the bridge.
 
