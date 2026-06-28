@@ -71,7 +71,7 @@ Your auth token is in the mcp-automem service → **Variables** → copy the val
 
 If you're running the mcp-automem sidecar as a local HTTP server (not the stdio subprocess), check the port in your Docker Compose or mcp-automem config — it varies by setup.
 
-**Not sure which you have?** If you ran `npx @verygoodplugins/mcp-automem setup` or `install` to configure Claude Desktop, Cursor, or another local agent, that installer set up a stdio subprocess — which this bridge cannot use. You need the sidecar deployed as a separate HTTP service. See [mcp-automem Railway deployment](https://github.com/verygoodplugins/mcp-automem).
+**Already ran the mcp-automem wizard?** If you ran `npx @verygoodplugins/mcp-automem setup` or `install` to configure Claude Desktop, Cursor, or another local agent, that wizard created a stdio subprocess entry in your mcp.json — and the bridge supports that directly. Your existing mcp.json entry works as-is; just point `mcpServerName` at it in step 5 if it isn't named `automem`.
 
 ---
 
@@ -147,6 +147,22 @@ Pi handles both a missing file and an existing one with other servers — you ju
   }
 }
 ```
+
+*Using a local stdio subprocess* — if the mcp-automem wizard already created an entry in your mcp.json, it looks something like this and works without changes:
+
+```json
+{
+  "mcpServers": {
+    "automem": {
+      "command": "npx",
+      "args": ["-y", "@verygoodplugins/mcp-automem"],
+      "env": { "AUTOMEM_TOKEN": "your-token" }
+    }
+  }
+}
+```
+
+The bridge detects the transport automatically: `url` → HTTP, `command` → stdio. No extra config needed.
 
 ### 4. Reload pi
 
