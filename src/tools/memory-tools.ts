@@ -205,9 +205,11 @@ export function registerMemoryTools(pi: ExtensionAPI) {
       const blockedCats = new Set((config.writePolicy.blockedCategories || []).map((c: string) => String(c).toLowerCase().trim()));
       const updateTags = Array.isArray(params.tags) ? params.tags.map((t: string) => String(t).toLowerCase().trim()) : [];
       // Mirror the commit path: a blocked category can come from an explicit tag OR
-      // from the category inferred from the (type, tags) pair — not just a raw tag.
-      const inferredCategory = params.type ? inferCategory(params.type as MemoryType, updateTags).toLowerCase().trim() : null;
-      const effectiveCategories = [...updateTags, ...(inferredCategory ? [inferredCategory] : [])];
+      // from the category inferred from the (type, tags) pair. inferCategory checks
+      // tags first and tolerates an absent type, so compute it unconditionally —
+      // otherwise a tag-only update (e.g. tag "decision", no type) skips the check.
+      const inferredCategory = inferCategory(params.type as MemoryType, updateTags).toLowerCase().trim();
+      const effectiveCategories = [...updateTags, inferredCategory];
       if (blockedCats.size > 0 && effectiveCategories.some((c: string) => blockedCats.has(c))) {
         throw new Error("Update blocked: the update maps to a write-policy blocked category.");
       }
