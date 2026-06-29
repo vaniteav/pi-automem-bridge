@@ -84,7 +84,9 @@ If you're running the mcp-automem sidecar as a local HTTP server (not the stdio 
 
 ## Setup
 
-Four steps to a working install, then optional tuning. The only things you must configure by hand are your auth token and the server URL — the package has no way to know your private credentials.
+Four steps to a working install, then optional tuning. The only things you must configure by hand are your auth token and how to reach your AutoMem server — an HTTP URL or a local command — since the package has no way to know your private credentials.
+
+> **Already running mcp-automem locally?** If you set it up for Claude Desktop, Cursor, or another agent with the wizard, your `~/.pi/agent/mcp.json` already has a working `automem` entry with your token baked in. **Install the bridge (step 1) and skip straight to [step 4](#4-reload-pi)** — steps 2–3 only apply when you're configuring a connection by hand (an HTTP endpoint, or a manual stdio entry).
 
 ### 1. Install the package
 
@@ -94,9 +96,9 @@ pi install npm:pi-automem-bridge
 
 The extension registers itself with pi immediately. Recall and memory features remain in offline mode until you complete the remaining steps.
 
-### 2. Set your auth token as an environment variable — *required*
+### 2. Set your auth token as an environment variable — *required (manual setups)*
 
-Your AutoMem token must be in the environment before the bridge can use it — never paste it directly into config files.
+Keep your AutoMem token in an environment variable and reference it from `mcp.json` rather than pasting it in plain text. The bridge resolves `${VAR}` references in **both** transports — the HTTP `headers` block *and* the stdio `env` block — so one env var works either way.
 
 Railway users: copy the value of `AUTOMEM_API_TOKEN` from your mcp-automem service Variables. You'll store it locally under a name of your choosing — `AUTOMEM_TOKEN` is used in the examples below, but any name works as long as you use the same name in step 3.
 
@@ -116,21 +118,21 @@ Verify with `echo $AUTOMEM_TOKEN` (should print your token, not blank).
 
 ### 3. Connect it to your AutoMem server — *required*
 
-The URL must include `https://` and end with `/mcp`. The `${AUTOMEM_TOKEN}` reference reads the variable you set in step 2 — never hardcode the token here. The entry must be named `automem` (the default the extension looks for), or configure a different name via `mcpServerName` in step 5.
+Add an `automem` server entry to `~/.pi/agent/mcp.json` using **one** transport — an HTTP `url` (Railway/Docker endpoint) **or** a stdio `command` (local subprocess). The bridge auto-detects which: `url` → HTTP, `command` → stdio. Reference the token via `${AUTOMEM_TOKEN}` from step 2 rather than hardcoding it. The entry must be named `automem` (the default the extension looks for), or set a different name via `mcpServerName` in step 5.
 
-> **A remote endpoint must use `https://`.** The bridge will not send your token over plaintext `http://` to a non-loopback host — it connects without credentials rather than leak them, which then fails auth. Local `http://localhost` (or `127.0.0.1` / `::1`) is fine for a sidecar on your own machine.
+> **HTTP only — use `https://`.** For the HTTP transport the URL must include `https://` and end with `/mcp`, and the bridge will not send your token over plaintext `http://` to a non-loopback host — it connects without credentials rather than leak them, which then fails auth. Local `http://localhost` (or `127.0.0.1` / `::1`) is fine. The stdio transport passes the token to the subprocess through its `env` block, not over the wire, so none of this applies to it.
 
-**Let pi write it (works for all cases):**
+**Let pi write it:**
 
-Open pi and say:
+Open pi and say (HTTP endpoint):
 
 > *"Add an `automem` MCP server to my `~/.pi/agent/mcp.json` at `https://YOUR-URL/mcp`, bearer auth using `${AUTOMEM_TOKEN}`. Keep any existing server entries."*
 
-Pi handles both a missing file and an existing one with other servers — you just substitute your URL.
+For a local subprocess instead, describe the `command` / `args` / `env` to use — or just say *"point my `automem` entry at my existing mcp-automem install."* Pi handles both a missing file and an existing one with other servers.
 
 **Or edit the file yourself:**
 
-*No mcp.json yet* — create `~/.pi/agent/mcp.json`:
+*HTTP — no mcp.json yet* — create `~/.pi/agent/mcp.json`:
 
 ```json
 {
@@ -143,7 +145,7 @@ Pi handles both a missing file and an existing one with other servers — you ju
 }
 ```
 
-*Already have a mcp.json with other servers* — add the `automem` block alongside your existing entries:
+*HTTP — already have a mcp.json with other servers* — add the `automem` block alongside your existing entries:
 
 ```json
 {
@@ -157,7 +159,7 @@ Pi handles both a missing file and an existing one with other servers — you ju
 }
 ```
 
-*Using a local stdio subprocess* — if the mcp-automem wizard already created an entry in your mcp.json, it looks something like this and works without changes:
+*Local stdio subprocess* — if the mcp-automem wizard already created an entry in your mcp.json, it looks something like this and works without changes:
 
 ```json
 {
@@ -170,6 +172,8 @@ Pi handles both a missing file and an existing one with other servers — you ju
   }
 }
 ```
+
+The token lives in the `env` block here, not an `Authorization` header. To avoid hardcoding it, set the env var from step 2 and reference it instead — `"env": { "AUTOMEM_TOKEN": "${AUTOMEM_TOKEN}" }` — the bridge resolves `${...}` in `env` values too. (The wizard-generated entry above already includes a literal token and needs no changes.)
 
 The bridge detects the transport automatically: `url` → HTTP, `command` → stdio. No extra config needed.
 
