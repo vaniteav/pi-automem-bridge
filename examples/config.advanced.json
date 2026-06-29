@@ -23,7 +23,6 @@
     "timeoutMs": 8000
   },
   "projectDetection": {
-    "tagPrefix": "project:",
     "folderTags": {
       "projects": ["project"],
       "areas": ["area"],

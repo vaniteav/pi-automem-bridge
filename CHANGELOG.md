@@ -27,7 +27,7 @@
 
 ### Fixed
 - **Structured recall**: `recall_memory` calls now request `format: "json"` from the server, returning a structured JSON object instead of human-readable text. The `parseSearchResults` parser handles this object format (top-level `{ results: [...] }`) as the primary path. The text-format parser is retained as a fallback.
-- **Actionable setup errors**: `mcp.json` URL validation now catches missing `https://` scheme and missing `/mcp` path suffix at config-load time with a plain-English error instead of an opaque `TypeError: Invalid URL` or `MCP HTTP 404` deep in the call stack.
+- **Actionable setup messages**: `mcp.json` URL problems are flagged early with plain-English text — a hard error for an unparseable URL, and warnings for a missing `/mcp` path or a plaintext `http://` host — instead of an opaque `TypeError: Invalid URL` or `MCP HTTP 404` surfacing deep in the call stack.
 - **Token env var warning**: if the auth header references an env var (e.g. `${AUTOMEM_TOKEN}`) that is not set, the bridge now warns at startup with exact `setx` / `export` instructions, catching the missing variable early so the auth issue surfaces immediately with instructions to fix it.
 - **Lifecycle config no longer flagged**: the bridge connects to AutoMem via direct HTTP, independent of pi's MCP adapter lifecycle settings. The status command and session start no longer warn about `lifecycle: "lazy"`, and the `lifecycle: "keep-alive"` recommendation is removed from the README — it has no effect on bridge behavior.
 - **`automem_update_memory` missing from SKILL.md**: the tool has existed since v0.2.5 but was absent from the skill listing. Added.

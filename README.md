@@ -64,13 +64,17 @@ The bridge also works with nothing configured — it degrades gracefully to offl
 
 **Railway deployment (most common)**
 
-Open your Railway project → select the **mcp-automem** service → **Settings → Domains**. Your endpoint URL is:
+> **Don't have AutoMem running yet?** Deploy the entire stack in one click with the official template — it provisions the whole system: `automem` (API), `falkordb` (graph store), `qdrant` (vector store), `mcp-automem` (the MCP endpoint this bridge connects to), and the graph viewer.
+>
+> **[🚂 Deploy AutoMem on Railway →](https://railway.com/deploy/automem-ai-memory-service?referralCode=VuFE6g&utm_medium=integration&utm_source=github&utm_campaign=generic)**
+
+Once it's deployed, open your Railway project → select the **mcp-automem** service → **Settings → Domains**. Your endpoint URL is:
 
 ```
 https://<your-service-name>.up.railway.app/mcp
 ```
 
-The `/mcp` suffix and `https://` scheme are both required.
+Use `https://` and keep the `/mcp` path: `/mcp` is where AutoMem's MCP endpoint lives (the bridge warns if it's missing), and `https://` is effectively mandatory for a remote endpoint since the bridge withholds your token over plaintext `http://`.
 
 Your auth token is in the mcp-automem service → **Variables** → copy the value of `AUTOMEM_API_TOKEN`. You'll store this locally under whatever name you choose (see step 2 of Setup).
 
@@ -120,7 +124,7 @@ Verify with `echo $AUTOMEM_TOKEN` (should print your token, not blank).
 
 Add an `automem` server entry to `~/.pi/agent/mcp.json` using **one** transport — an HTTP `url` (Railway/Docker endpoint) **or** a stdio `command` (local subprocess). The bridge auto-detects which: `url` → HTTP, `command` → stdio. Reference the token via `${AUTOMEM_TOKEN}` from step 2 rather than hardcoding it. The entry must be named `automem` (the default the extension looks for), or set a different name via `mcpServerName` in step 5.
 
-> **HTTP only — use `https://`.** For the HTTP transport the URL must include `https://` and end with `/mcp`, and the bridge will not send your token over plaintext `http://` to a non-loopback host — it connects without credentials rather than leak them, which then fails auth. Local `http://localhost` (or `127.0.0.1` / `::1`) is fine. The stdio transport passes the token to the subprocess through its `env` block, not over the wire, so none of this applies to it.
+> **HTTP only — use `https://`.** For the HTTP transport the URL should use `https://` and include the `/mcp` path (the bridge warns if `/mcp` is missing). `https://` matters because the bridge will not send your token over plaintext `http://` to a non-loopback host — it connects without credentials rather than leak them, which then fails auth. Local `http://localhost` (or `127.0.0.1` / `::1`) is fine. The stdio transport passes the token to the subprocess through its `env` block, not over the wire, so none of this applies to it.
 
 **Let pi write it:**
 
@@ -220,7 +224,7 @@ You don't type these — pi does, in plain conversation. Tell it *"remember that
 |---|---|
 | `automem_propose_memory` | Preview a memory candidate — validates, scans for secrets, checks for duplicates. Does not write. |
 | `automem_commit_memory` | Store a policy-approved memory. Returns `DUPLICATE_DETECTED` if a similar memory exists. |
-| `automem_update_memory` | Update an existing memory by ID. Enforces `writePolicy.mode`, scans `content`/`metadata` for secrets and PII, rejects over-length content, and blocks any tag or inferred category that falls under `blockedCategories`. Updatable fields: `content`, `type`, `tags` (replaces existing), `importance`, `confidence`, `metadata` (merged). |
+| `automem_update_memory` | Update an existing memory by ID. Honors the `off` write-policy kill switch, scans `content`/`metadata` for secrets and PII, rejects over-length content, and blocks any tag or inferred category under `blockedCategories`. Requires confirmation (or `approvedByUser`) before applying. Updatable fields: `content`, `type`, `tags` (replaces existing), `importance`, `confidence`, `metadata` (merged). |
 | `automem_link_memories` | Create a typed relationship between two existing memories. |
 | `automem_correct_memory` | Store a correction and link old → new with a provenance relationship (EVOLVED_INTO or CONTRADICTS). |
 
@@ -288,7 +292,7 @@ None of this replaces good hygiene on the AutoMem backend itself — auth, netwo
 
 ## Configuration reference
 
-Config file: `~/.pi/agent/automem.json`. Override the path with the `AUTOMEM_CONFIG_PATH` environment variable — useful for per-project configs or CI environments where you want different recall behavior per repo.
+Config file: `~/.pi/agent/automem.json`. Two environment variables override it without editing the file: `AUTOMEM_CONFIG_PATH` points at a different config file (useful for per-project configs or CI environments where you want different recall behavior per repo), and `AUTOMEM_MCP_SERVER` overrides which `mcp.json` server entry to connect to (takes precedence over `mcpServerName`).
 
 | Section | Purpose |
 |---|---|
@@ -297,7 +301,7 @@ Config file: `~/.pi/agent/automem.json`. Override the path with the `AUTOMEM_CON
 | `turnRecall` | Per-prompt recall: limits, memory types, relation/entity expansion, and timeout |
 | `projectDetection` | Map git repos and folder names to project tags for scoped recall |
 | `projectOverrides` | Per-project overrides for turn recall limits and filters |
-| `writePolicy` | Write mode, categories, importance threshold, dedupe settings |
+| `writePolicy` | Write mode, categories, importance threshold, auto-applied tags (`alwaysTag`, default `source:pi`), dedupe settings |
 | `behavior` | Display mode and content-length preferences |
 
 Set only the keys you want to change — everything else uses its default. Two ready-to-edit starting points ship with the package:
@@ -307,7 +311,7 @@ Set only the keys you want to change — everything else uses its default. Two r
 
 ### Recall display (`behavior.displayRecall`)
 
-Controls how much of the recalled context shows in chat. Injection into the system prompt happens regardless.
+Controls how much of the recalled context shows in chat. The model receives the recalled content in every mode — `hidden` and `summary` inject it into the system prompt; `full` surfaces it as a visible recall message in the conversation instead.
 
 | Mode | Behavior |
 |---|---|

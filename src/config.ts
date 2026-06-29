@@ -50,7 +50,6 @@ export interface AutoMemConfig {
   };
   projectDetection: {
     enabled: boolean;
-    tagPrefix: string;
     folderTags: Record<string, string[]>;
     gitRepoToTag: Record<string, string>;
   };
@@ -106,7 +105,6 @@ export const DEFAULT_CONFIG: AutoMemConfig = {
   },
   projectDetection: {
     enabled: true,
-    tagPrefix: "project:",
     folderTags: {},
     gitRepoToTag: {},
   },
