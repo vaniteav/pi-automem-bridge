@@ -111,6 +111,8 @@ Verify with `echo $AUTOMEM_TOKEN` (should print your token, not blank).
 
 The URL must include `https://` and end with `/mcp`. The `${AUTOMEM_TOKEN}` reference reads the variable you set in step 2 — never hardcode the token here. The entry must be named `automem` (the default the extension looks for), or configure a different name via `mcpServerName` in step 5.
 
+> **A remote endpoint must use `https://`.** The bridge will not send your token over plaintext `http://` to a non-loopback host — it connects without credentials rather than leak them, which then fails auth. Local `http://localhost` (or `127.0.0.1` / `::1`) is fine for a sidecar on your own machine.
+
 **Let pi write it (works for all cases):**
 
 Open pi and say:
@@ -207,7 +209,7 @@ You don't type these — pi does, in plain conversation. Tell it *"remember that
 |---|---|
 | `automem_propose_memory` | Preview a memory candidate — validates, scans for secrets, checks for duplicates. Does not write. |
 | `automem_commit_memory` | Store a policy-approved memory. Returns `DUPLICATE_DETECTED` if a similar memory exists. |
-| `automem_update_memory` | Update an existing memory by ID. Enforces `writePolicy.mode` and scans `content`/`metadata` for secrets. Updatable fields: `content`, `type`, `tags` (replaces existing), `importance`, `confidence`, `metadata` (merged). |
+| `automem_update_memory` | Update an existing memory by ID. Enforces `writePolicy.mode`, scans `content`/`metadata` for secrets and PII, rejects over-length content, and blocks any tag or inferred category that falls under `blockedCategories`. Updatable fields: `content`, `type`, `tags` (replaces existing), `importance`, `confidence`, `metadata` (merged). |
 | `automem_link_memories` | Create a typed relationship between two existing memories. |
 | `automem_correct_memory` | Store a correction and link old → new with a provenance relationship (EVOLVED_INTO or CONTRADICTS). |
 
@@ -223,7 +225,9 @@ Policy blocks, missing approval in non-interactive contexts, and invalid update 
 
 ## Write policy
 
-New memories go through: normalize → secret scan → policy check → dedupe → confirm/auto → store. Updates (`automem_update_memory`) enforce `writePolicy.mode` and the secret scan; the full policy pipeline applies to new candidates only.
+New memories go through: normalize → secret/PII scan → policy check → dedupe → confirm/auto → store. Updates (`automem_update_memory`) run a focused subset of the same gate — `mode`, the secret/PII scan, the content-length cap, and blocked categories — while dedupe and the propose/confirm flow apply to new candidates only.
+
+The secret/PII scan blocks a write outright when it detects credentials (API keys, bearer tokens, private keys, AWS keys, connection strings) or basic personal data (email addresses, US Social Security numbers). If you deliberately want to keep something that trips it, rephrase it or store a reference rather than the raw value.
 
 ```json
 {
@@ -254,6 +258,20 @@ When a commit finds a close match — recall similarity at or above `dedupeMinSc
 3. Cancel — do nothing if the existing memory already covers it
 
 Lower `dedupeMinScore` to catch looser duplicates, or raise it to flag only near-identical ones. (Recall results without a similarity score always surface as candidates.)
+
+---
+
+## Security & privacy
+
+The bridge sits between your agent and long-term storage, so it's built to fail safe. What it guards, and how:
+
+- **Secrets and PII never get stored silently.** Every write — new *or* update — is scanned for credentials (API keys, bearer tokens, private keys, AWS keys, connection strings) and basic personal data (email addresses, US SSNs). A match **blocks the write**, and the agent is told only the *kind* of thing found, never the value. To keep something that trips the scanner, rephrase it or store a reference instead of the raw secret.
+- **Your auth token is never sent in the clear.** The `Authorization` header goes only to `https://` endpoints or a local `http://` loopback host (`localhost` / `127.0.0.1` / `::1`). Point the bridge at a plaintext remote `http://` URL and it connects *without* the token rather than leak it — so use `https://` for anything off your machine.
+- **Recalled memory is treated as untrusted data.** Memories are injected into the system prompt inside explicit fences that tell the model to treat the content as reference data, not instructions, and any text trying to forge those fences is stripped first. A poisoned memory can't quietly hijack a later turn.
+- **Writes are policy-gated, not a free-for-all.** The default `safe-auto` mode auto-stores only the low-risk categories you configure and asks before anything else; `confirm-all`, `propose`, and `off` tighten that further. Blocked categories and a minimum-importance threshold keep noise and sensitive classes out. See [Write policy](#write-policy).
+- **On Windows, subprocess transports are injection-hardened.** Stdio MCP servers are spawned through `cmd.exe` to resolve `.cmd` shims; the bridge rejects any command or argument containing shell metacharacters first, so a tampered `mcp.json` can't smuggle in a second command.
+
+None of this replaces good hygiene on the AutoMem backend itself — auth, network exposure, and backups live there; see the [AutoMem](https://github.com/verygoodplugins/automem) docs for that side.
 
 ---
 
