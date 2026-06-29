@@ -6,6 +6,8 @@
 
 > **AutoMem is the memory. This bridge ensures pi actually uses it.**
 
+Automatic recall and a secret-scanning, policy-gated write pipeline for [pi](https://github.com/earendil-works/pi) — wired to your AutoMem instance, **local or remote**.
+
 ```bash
 pi install npm:pi-automem-bridge
 ```
@@ -23,8 +25,9 @@ pi install npm:pi-automem-bridge
 
 Plenty of agents can store a memory. Far fewer reach for it when it counts — or check what they're scribbling down. pi-automem-bridge makes pi do both, automatically: startup + per-turn recall injected straight into the prompt, and a secret-scanning, policy-gated write pipeline guarding the door to AutoMem.
 
+- **Works with any AutoMem setup — local or remote.** Point it at a hosted HTTP endpoint (Railway or self-hosted Docker) *or* a local mcp-automem subprocess — the very same stdio install Claude Desktop and Cursor use. The bridge auto-detects the transport from your `mcp.json` and manages the connection either way: plain HTTP calls, or spawning and supervising the subprocess. Already configured mcp-automem for another tool? It just works — no second endpoint to stand up.
 - **Per-project scoping** — recall limits and filters tuned to the repo or folder you're working in.
-- **Bring your own AutoMem** — talks to your existing instance over MCP. No duplicate credentials or storage to manage.
+- **Safe by default** — every write is secret- and PII-scanned and policy-gated, your auth token is never sent in the clear, and recalled memory is treated as untrusted data. See [Security & privacy](#security--privacy).
 
 > The storage and the recall/similarity intelligence are [AutoMem](https://github.com/verygoodplugins/automem)'s. This package is the guardrail-and-automation layer that makes them automatic inside pi.
 
@@ -32,9 +35,9 @@ Plenty of agents can store a memory. Far fewer reach for it when it counts — o
 
 ## How it works
 
-Once installed, the bridge hooks into pi's session lifecycle:
+Once installed, the bridge connects to AutoMem over whichever transport your `mcp.json` declares — a remote HTTP endpoint or a local subprocess — then hooks into pi's session lifecycle:
 
-- **At session start** it connects to your AutoMem endpoint, discovers available tools, runs your startup recall queries, and injects the results — your preferences, working style, and environment — into the system prompt.
+- **At session start** it connects to your AutoMem endpoint (or spawns the local subprocess), discovers available tools, runs your startup recall queries, and injects the results — your preferences, working style, and environment — into the system prompt.
 - **Before each turn** it recalls memories relevant to the current task and the detected project, again injected silently.
 - **When the agent writes a memory** the candidate passes through the write pipeline — normalize → secret-scan → policy check → dedupe → confirm or auto-store — so nothing unvetted reaches AutoMem.
 - **Relationship tools** let the agent link memories or record corrections with provenance, building a connected graph over time.
@@ -45,13 +48,17 @@ Recall display, write policy, and per-project scoping are all configurable — s
 
 ## Before you begin
 
-This bridge connects pi to AutoMem's MCP tools over HTTP. You need:
+This bridge connects pi to AutoMem's MCP tools — over a remote HTTP endpoint **or** a local subprocess, whichever you have. You need:
 
 1. **[pi](https://github.com/earendil-works/pi)** — the agent this extension runs inside.
 2. **The [AutoMem](https://github.com/verygoodplugins/automem) backend** — the graph-vector store (Railway or self-hosted Docker). This is the storage layer everything else depends on.
-3. **An AutoMem MCP HTTP endpoint** — the URL the bridge posts requests to. This is the [mcp-automem](https://github.com/verygoodplugins/mcp-automem) sidecar deployed as a service pointing at your AutoMem backend (Railway or Docker). It must be the HTTP server mode — not the stdio subprocess mode used by Claude Desktop or Cursor.
+3. **A way to reach AutoMem's MCP tools** — *either* of:
+   - a hosted **HTTP endpoint** — the [mcp-automem](https://github.com/verygoodplugins/mcp-automem) sidecar deployed as a service (Railway or Docker), the URL the bridge posts to; or
+   - a local **stdio subprocess** — the same `npx @verygoodplugins/mcp-automem` install the Claude Desktop / Cursor wizard sets up.
 
-The bridge works without an endpoint configured — it degrades gracefully to offline mode. In offline mode, startup and turn-level recall are disabled and memory writes will fail, but pi runs normally.
+   You only need one. The bridge auto-detects which from your `mcp.json`: a `url` entry → HTTP, a `command` entry → stdio.
+
+The bridge also works with nothing configured — it degrades gracefully to offline mode. In offline mode, startup and turn-level recall are disabled and memory writes will fail, but pi runs normally.
 
 ### Finding your endpoint URL
 
