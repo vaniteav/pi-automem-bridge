@@ -207,7 +207,7 @@ You don't type these — pi does, in plain conversation. Tell it *"remember that
 |---|---|
 | `automem_propose_memory` | Preview a memory candidate — validates, scans for secrets, checks for duplicates. Does not write. |
 | `automem_commit_memory` | Store a policy-approved memory. Returns `DUPLICATE_DETECTED` if a similar memory exists. |
-| `automem_update_memory` | Update an existing memory by ID. Updatable fields: `content`, `type`, `tags` (replaces existing), `importance`, `confidence`, `metadata` (merged). |
+| `automem_update_memory` | Update an existing memory by ID. Enforces `writePolicy.mode` and scans `content`/`metadata` for secrets. Updatable fields: `content`, `type`, `tags` (replaces existing), `importance`, `confidence`, `metadata` (merged). |
 | `automem_link_memories` | Create a typed relationship between two existing memories. |
 | `automem_correct_memory` | Store a correction and link old → new with a provenance relationship (EVOLVED_INTO or CONTRADICTS). |
 
@@ -223,7 +223,7 @@ Policy blocks, missing approval in non-interactive contexts, and invalid update 
 
 ## Write policy
 
-Every write goes through: normalize → secret scan → policy check → dedupe → confirm/auto → store. Nothing bypasses this pipeline.
+New memories go through: normalize → secret scan → policy check → dedupe → confirm/auto → store. Updates (`automem_update_memory`) enforce `writePolicy.mode` and the secret scan; the full policy pipeline applies to new candidates only.
 
 ```json
 {
