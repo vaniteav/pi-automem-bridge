@@ -1,7 +1,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { loadConfig, type MemoryType } from "../config";
-import { automemRecall, automemStore, automemUpdate, setAutoMemMcpServerName } from "../mcp-client";
+import { type MemoryType } from "../config";
+import { automemRecall, automemStore, automemUpdate, loadConfigAndActivate } from "../mcp-client";
 import { evaluateWritePolicy, formatCandidate, type MemoryCandidate } from "../write-policy";
 import { parseSearchResults } from "../recall";
 
@@ -21,14 +21,7 @@ const CandidateParams = Type.Object({
 });
 
 const CommitParams = Type.Object({
-  content: Type.String({ description: "Compact memory text. Target 150-300 chars; hard max from config, default 2000." }),
-  type: Type.String({ description: "Memory type: Decision, Pattern, Preference, Style, Habit, Insight, or Context" }),
-  tags: Type.Optional(Type.Array(Type.String(), { description: "Tags such as source:pi, project:<slug>, preference, decision" })),
-  importance: Type.Optional(Type.Number({ description: "Importance 0-1. Use 0.85+ for durable decisions/preferences/corrections." })),
-  confidence: Type.Optional(Type.Number({ description: "Classification confidence 0-1. Default 0.9." })),
-  category: Type.Optional(Type.String({ description: "Write-policy category, e.g. technical-decision, agent-pattern, bug-fix, private" })),
-  source: Type.Optional(Type.String({ description: "Memory source label. Default from config." })),
-  metadata: Type.Optional(Type.Any({ description: "Optional JSON metadata" })),
+  ...CandidateParams.properties,
   approvedByUser: Type.Optional(Type.Boolean({ description: "Set true only after explicit user approval for this exact memory candidate." })),
   dedupeQuery: Type.Optional(Type.String({ description: "Optional query for similar-memory recall before storing. Defaults to content." })),
   updateMemoryId: Type.Optional(Type.String({ description: "If set, update this existing memory instead of storing a new one. Use when dedupe found a close match." })),
@@ -58,8 +51,7 @@ export function registerMemoryTools(pi: ExtensionAPI) {
     promptSnippet: "Use before storing durable memories. It does not write; it proposes and checks relevance/safety.",
     parameters: CandidateParams,
     async execute(_toolCallId, params) {
-      const config = loadConfig();
-      setAutoMemMcpServerName(config.mcpServerName);
+      const config = loadConfigAndActivate();
       const candidate = toCandidate(params);
       const decision = evaluateWritePolicy(candidate, config);
       const { text: similarText, matches: similarMatches } = await recallSimilarWithMatches(
@@ -83,8 +75,7 @@ export function registerMemoryTools(pi: ExtensionAPI) {
     promptSnippet: "Use only after automem_propose_memory and explicit approval, unless policy returns safe-auto. If DUPLICATE_DETECTED, consider calling again with updateMemoryId instead.",
     parameters: CommitParams,
     async execute(_toolCallId, params, _signal, _onUpdate, ctx: any) {
-      const config = loadConfig();
-      setAutoMemMcpServerName(config.mcpServerName);
+      const config = loadConfigAndActivate();
       const candidate = toCandidate(params);
       const decision = evaluateWritePolicy(candidate, config);
 

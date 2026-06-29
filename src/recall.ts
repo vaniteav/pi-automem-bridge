@@ -113,33 +113,7 @@ export function parseSearchResults(text: string): FormattedMemory[] {
     return memories;
   }
 
-  // Try newline-delimited JSON; fall back to one memory per nonempty line.
-  const lines = text.split("\n").filter(function(l: string) { return l.trim().length > 0; });
-  const memories: FormattedMemory[] = [];
-
-  for (let i = 0; i < lines.length; i++) {
-    try {
-      const item = JSON.parse(lines[i]);
-      memories.push({
-        id: item.id || item.memory_id || "",
-        type: item.type || item.memory_type || "Context",
-        content: item.content || item.text || "",
-        tags: Array.isArray(item.tags) ? item.tags : [],
-        score: item.score !== undefined ? item.score : (item.similarity !== undefined ? item.similarity : undefined),
-      });
-    } catch (_e) {
-      if (lines[i].trim()) {
-        memories.push({
-          id: "",
-          type: "Context",
-          content: lines[i].trim(),
-          tags: [],
-        });
-      }
-    }
-  }
-
-  return memories;
+  return [];
 }
 
 function truncateToBytes(value: string, maxBytes: number): string {

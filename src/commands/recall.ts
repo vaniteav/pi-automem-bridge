@@ -3,8 +3,7 @@
  */
 
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { automemRecall, setAutoMemMcpServerName } from "../mcp-client";
-import { loadConfig } from "../config";
+import { automemRecall, loadConfigAndActivate } from "../mcp-client";
 
 export function registerRecallCommand(pi: {
   registerCommand: (name: string, opts: {
@@ -21,8 +20,7 @@ export function registerRecallCommand(pi: {
         return;
       }
 
-      const config = loadConfig();
-      setAutoMemMcpServerName(config.mcpServerName);
+      const config = loadConfigAndActivate();
 
       try {
         const result = await automemRecall(query, {

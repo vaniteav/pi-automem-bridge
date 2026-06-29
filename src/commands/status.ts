@@ -3,8 +3,7 @@
  */
 
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { automemHealth, setAutoMemMcpServerName } from "../mcp-client";
-import { loadConfig } from "../config";
+import { automemHealth, loadConfigAndActivate } from "../mcp-client";
 
 export function registerStatusCommand(pi: {
   registerCommand: (name: string, opts: {
@@ -15,8 +14,7 @@ export function registerStatusCommand(pi: {
   pi.registerCommand("automem-status", {
     description: "Show AutoMem health and memory count",
     handler: async function(_args: string, ctx: ExtensionCommandContext) {
-      const config = loadConfig();
-      setAutoMemMcpServerName(config.mcpServerName);
+      const config = loadConfigAndActivate();
 
       ctx.ui.notify("Checking AutoMem...", "info");
 

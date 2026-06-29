@@ -332,14 +332,14 @@ npm run test:live      # full round-trip write test (requires AutoMem)
 The bridge publishes its core functions so other pi extensions can build on them. All are importable from the published `src/` directory (TypeScript — requires `tsx` or a TS-aware bundler):
 
 ```typescript
-import { automemRecall, automemStore, automemUpdate, automemHealth, discoverTools } from 'pi-automem-bridge/src/mcp-client';
+import { automemRecall, automemStore, automemUpdate, automemHealth, loadConfigAndActivate } from 'pi-automem-bridge/src/mcp-client';
 import { evaluateWritePolicy, normalizeCandidate } from 'pi-automem-bridge/src/write-policy';
 import { loadConfig } from 'pi-automem-bridge/src/config';
 import { detectProject } from 'pi-automem-bridge/src/project-detect';
 import { parseSearchResults } from 'pi-automem-bridge/src/recall';
 ```
 
-`automemRecall(query, options?, timeoutMs?)` — query AutoMem; returns the raw MCP result. Respects the server name set by `setAutoMemMcpServerName`.
+`automemRecall(query, options?, timeoutMs?)` — query AutoMem; returns the raw MCP result. Respects the active server name.
 
 `automemStore(content, type, tags, options?)` — store a memory. Skips the write-policy pipeline — call `evaluateWritePolicy` first if you want policy enforcement.
 
@@ -347,9 +347,9 @@ import { parseSearchResults } from 'pi-automem-bridge/src/recall';
 
 `loadConfig()` — load and merge `automem.json` with defaults. Safe to call repeatedly; always returns a fresh clone.
 
-`detectProject(cwd, prompt, config)` — infer project tag from git remote, folder name, or prompt text.
+`loadConfigAndActivate()` — `loadConfig()` + activate the configured MCP server name in one call. Preferred over calling both separately.
 
-The MCP server name and connection details are read from `~/.pi/agent/mcp.json` at call time. Call `setAutoMemMcpServerName(name)` before any MCP call if you're using a server entry other than `"automem"`.
+`detectProject(cwd, prompt, config)` — infer project tag from git remote, folder name, or prompt text.
 
 ---
 

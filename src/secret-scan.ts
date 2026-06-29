@@ -24,10 +24,6 @@ export function scanForSecrets(text: string): SecretFinding[] {
   return findings;
 }
 
-export function hasSecrets(text: string): boolean {
-  return scanForSecrets(text).length > 0;
-}
-
 function redact(value: string): string {
   if (value.length <= 12) return "[redacted]";
   return value.slice(0, 6) + "…" + value.slice(-4);

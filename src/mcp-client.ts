@@ -9,7 +9,7 @@
 import { readFileSync, existsSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
-import { resolveEnvVars } from "./config";
+import { loadConfig, resolveEnvVars, type AutoMemConfig } from "./config";
 import { HttpTransport, StdioTransport, type Transport } from "./transport";
 
 // ---------------------------------------------------------------------------
@@ -27,53 +27,42 @@ export interface McpHealth {
   error?: string;
 }
 
-export type McpLifecycle = "lazy" | "eager" | "keep-alive" | string;
-
 // ---------------------------------------------------------------------------
 // MCP config reader
 // ---------------------------------------------------------------------------
 
-interface CachedServerConfig {
-  // HTTP transport
+interface ServerEntry {
   url?: string;
   auth?: string;
-  // Stdio transport
   command?: string;
   args?: string[];
   spawnEnv?: Record<string, string>;
-  // Common
-  lifecycle: McpLifecycle;
-  signature: string;
 }
 
-let mcpConfigCache: Map<string, CachedServerConfig> = new Map();
+// ponytail: signature map only — invalidates transport+discovery on mcp.json changes (tested by C1, C5, C6)
+let mcpSignatures: Map<string, string> = new Map();
 let transportCache: Map<string, Transport> = new Map();
 
-function loadMcpServerConfig(serverName: string): CachedServerConfig {
+function readMcpServerEntry(serverName: string): ServerEntry {
   const mcpJsonPath = resolve(homedir(), ".pi", "agent", "mcp.json");
 
   if (!existsSync(mcpJsonPath)) {
     throw new Error("mcp.json not found at " + mcpJsonPath);
   }
 
-  let signature = "";
   try {
     const st = statSync(mcpJsonPath);
-    signature = st.mtimeMs + ":" + st.size;
-  } catch (_e) { /* leave signature empty so the cache is bypassed */ }
-
-  const cached = mcpConfigCache.get(serverName);
-  if (cached && signature !== "" && cached.signature === signature) return cached;
-
-  // Config changed — drop discovery cache and shut down the existing transport
-  if (cached) {
-    discoveredTools = null;
-    const oldTransport = transportCache.get(serverName);
-    if (oldTransport) {
-      oldTransport.shutdown().catch(function() {});
-      transportCache.delete(serverName);
+    const sig = st.mtimeMs + ":" + st.size;
+    if (mcpSignatures.get(serverName) !== sig) {
+      mcpSignatures.set(serverName, sig);
+      discoveredToolsPrefix = null;
+      const old = transportCache.get(serverName);
+      if (old) {
+        old.shutdown().catch(function() {});
+        transportCache.delete(serverName);
+      }
     }
-  }
+  } catch (_e) { /* leave stale signature; retry next call */ }
 
   const mcpJson = JSON.parse(readFileSync(mcpJsonPath, "utf8")) as {
     mcpServers?: Record<string, {
@@ -82,7 +71,6 @@ function loadMcpServerConfig(serverName: string): CachedServerConfig {
       command?: string;
       args?: string[];
       env?: Record<string, string>;
-      lifecycle?: string;
     }>;
   };
 
@@ -92,10 +80,7 @@ function loadMcpServerConfig(serverName: string): CachedServerConfig {
     throw new Error('MCP server "' + serverName + '" not found. Available: ' + available);
   }
 
-  const entry: CachedServerConfig = { lifecycle: server.lifecycle || "lazy", signature };
-
   if (server.url) {
-    // HTTP transport
     const rawUrl = server.url;
     try {
       new URL(rawUrl);
@@ -120,19 +105,16 @@ function loadMcpServerConfig(serverName: string): CachedServerConfig {
         'Unix: add  export ' + varMatch[1] + '=your-token  to your shell profile.'
       );
     }
-    entry.url = rawUrl;
-    entry.auth = resolveEnvVars(rawAuth);
+    return { url: rawUrl, auth: resolveEnvVars(rawAuth) };
 
   } else if (server.command) {
-    // Stdio transport
-    entry.command = server.command;
-    entry.args = server.args || [];
-    entry.spawnEnv = {};
+    const spawnEnv: Record<string, string> = {};
     if (server.env) {
       for (const [k, v] of Object.entries(server.env)) {
-        entry.spawnEnv[k] = resolveEnvVars(v);
+        spawnEnv[k] = resolveEnvVars(v);
       }
     }
+    return { command: server.command, args: server.args || [], spawnEnv };
 
   } else {
     throw new Error(
@@ -142,25 +124,22 @@ function loadMcpServerConfig(serverName: string): CachedServerConfig {
       '  Stdio: "command": "mcp-automem", "args": ["server"]'
     );
   }
-
-  mcpConfigCache.set(serverName, entry);
-  return entry;
 }
 
 // ---------------------------------------------------------------------------
 // Transport management
 // ---------------------------------------------------------------------------
 
-async function getOrCreateTransport(serverName: string, cfg: CachedServerConfig): Promise<Transport> {
+async function getOrCreateTransport(serverName: string, entry: ServerEntry): Promise<Transport> {
   const existing = transportCache.get(serverName);
   if (existing && existing.isHealthy()) return existing;
 
   let transport: Transport;
 
-  if (cfg.url) {
-    transport = new HttpTransport(cfg.url, cfg.auth || "");
-  } else if (cfg.command) {
-    const stdio = new StdioTransport(cfg.command, cfg.args, cfg.spawnEnv);
+  if (entry.url) {
+    transport = new HttpTransport(entry.url, entry.auth || "");
+  } else if (entry.command) {
+    const stdio = new StdioTransport(entry.command, entry.args, entry.spawnEnv);
     await stdio.initialize();
     transport = stdio;
   } else {
@@ -179,7 +158,7 @@ export async function shutdownAllTransports(): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// Server name
+// Server name + config helper
 // ---------------------------------------------------------------------------
 
 let configuredServerName = process.env.AUTOMEM_MCP_SERVER || "automem";
@@ -188,8 +167,8 @@ export function setAutoMemMcpServerName(serverName: string | undefined): void {
   if (serverName && serverName.trim()) {
     const newName = serverName.trim();
     if (newName !== configuredServerName) {
-      discoveredTools = null;
-      mcpConfigCache = new Map();
+      discoveredToolsPrefix = null;
+      mcpSignatures = new Map();
       const old = transportCache.get(configuredServerName);
       if (old) old.shutdown().catch(function() {});
       transportCache.clear();
@@ -202,9 +181,10 @@ function getAutoMemMcpServerName(): string {
   return process.env.AUTOMEM_MCP_SERVER || configuredServerName || "automem";
 }
 
-export function getAutoMemMcpLifecycle(): McpLifecycle {
-  const serverName = getAutoMemMcpServerName();
-  return loadMcpServerConfig(serverName).lifecycle;
+export function loadConfigAndActivate(): AutoMemConfig {
+  const config = loadConfig();
+  setAutoMemMcpServerName(config.mcpServerName);
+  return config;
 }
 
 // ---------------------------------------------------------------------------
@@ -217,8 +197,8 @@ async function mcpCall(
   timeoutMs: number = 30000,
 ): Promise<McpCallResult> {
   const serverName = getAutoMemMcpServerName();
-  const cfg = loadMcpServerConfig(serverName);
-  const transport = await getOrCreateTransport(serverName, cfg);
+  const entry = readMcpServerEntry(serverName);
+  const transport = await getOrCreateTransport(serverName, entry);
 
   const payload = (await transport.rpc("tools/call", { name: tool, arguments: args }, timeoutMs)) as {
     result?: McpCallResult;
@@ -238,19 +218,19 @@ async function mcpCall(
 }
 
 // ---------------------------------------------------------------------------
-// Tool discovery cache
+// Tool discovery
 // ---------------------------------------------------------------------------
 
-let discoveredTools: Map<string, string> | null = null;
+let discoveredToolsPrefix: boolean | null = null;
 
-export async function discoverTools(): Promise<Map<string, string>> {
+export async function discoverTools(): Promise<void> {
   const serverName = getAutoMemMcpServerName();
-  const cfg = loadMcpServerConfig(serverName);
+  const entry = readMcpServerEntry(serverName);
 
-  if (discoveredTools) return discoveredTools;
+  if (discoveredToolsPrefix !== null) return;
 
   try {
-    const transport = await getOrCreateTransport(serverName, cfg);
+    const transport = await getOrCreateTransport(serverName, entry);
     const payload = (await transport.rpc("tools/list", {}, 15000)) as {
       result?: { tools?: Array<{ name: string }> };
       error?: { code: number; message: string };
@@ -261,42 +241,17 @@ export async function discoverTools(): Promise<Map<string, string>> {
     }
 
     const tools = payload.result?.tools || [];
-    const map = new Map<string, string>();
-    for (const t of tools) {
-      map.set(t.name.toLowerCase(), t.name);
-      if (t.name.toLowerCase().startsWith("automem_")) {
-        map.set(t.name.toLowerCase().replace("automem_", ""), t.name);
-      }
-      map.set("automem_" + t.name.toLowerCase(), t.name);
-    }
-
-    discoveredTools = map;
-    console.log("[automem] discovered tools: " + Array.from(new Set(map.values())).join(", "));
-    return map;
+    discoveredToolsPrefix = tools.some(function(t) { return t.name.toLowerCase().startsWith("automem_"); });
+    console.log("[automem] discovered tools: " + tools.map(function(t) { return t.name; }).join(", "));
   } catch (err) {
-    console.warn("[automem] tools/list failed, using default tool names: " + err);
-    discoveredTools = new Map<string, string>([
-      ["recall_memory", "recall_memory"],
-      ["automem_recall_memory", "recall_memory"],
-      ["check_database_health", "check_database_health"],
-      ["automem_check_database_health", "check_database_health"],
-      ["store_memory", "store_memory"],
-      ["automem_store_memory", "store_memory"],
-      ["associate_memories", "associate_memories"],
-      ["automem_associate_memories", "associate_memories"],
-      ["update_memory", "update_memory"],
-      ["automem_update_memory", "update_memory"],
-      ["delete_memory", "delete_memory"],
-      ["automem_delete_memory", "delete_memory"],
-    ]);
-    return discoveredTools;
+    console.warn("[automem] tools/list failed, using bare tool names: " + err);
+    discoveredToolsPrefix = false;
   }
 }
 
 export function resolveToolName(logicalName: string): string {
-  if (!discoveredTools) return logicalName;
-  const key = logicalName.toLowerCase();
-  return discoveredTools.get(key) || logicalName;
+  if (discoveredToolsPrefix === true) return "automem_" + logicalName;
+  return logicalName;
 }
 
 // ---------------------------------------------------------------------------

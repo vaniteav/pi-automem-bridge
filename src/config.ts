@@ -19,19 +19,6 @@ export type MemoryType =
   | "Insight"
   | "Context";
 
-export type RelationshipType =
-  | "RELATES_TO"
-  | "LEADS_TO"
-  | "OCCURRED_BEFORE"
-  | "PREFERS_OVER"
-  | "EXEMPLIFIES"
-  | "CONTRADICTS"
-  | "REINFORCES"
-  | "INVALIDATED_BY"
-  | "EVOLVED_INTO"
-  | "DERIVED_FROM"
-  | "PART_OF";
-
 export interface ProjectRecallOverride {
   limit?: number;
   maxBytes?: number;
