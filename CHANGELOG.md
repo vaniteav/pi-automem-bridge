@@ -6,6 +6,7 @@
 - **Stdio transport**: the bridge now supports local mcp-automem subprocess installs in addition to HTTP endpoints. If your mcp.json server entry has a `command` field (as created by the mcp-automem wizard for Claude Desktop, Cursor, etc.), the bridge spawns and manages the subprocess directly, completing the MCP initialization handshake before accepting tool calls. Transport is detected automatically — `url` → HTTP, `command` → stdio. No config changes needed for existing setups.
 - `src/transport.ts`: `Transport` interface, `HttpTransport`, and `StdioTransport` — the HTTP call path is unchanged; stdio adds subprocess lifecycle management (SIGTERM → SIGKILL graceful shutdown) and newline-delimited JSON-RPC over stdin/stdout.
 - `shutdownAllTransports()` called on `session_shutdown` to cleanly terminate any stdio subprocess at session end.
+- `loadConfigAndActivate()` exported from `src/mcp-client`: loads `automem.json` and activates the configured server name in one call. Extension API users should prefer this over calling `loadConfig()` and `setAutoMemMcpServerName()` separately.
 
 ### Changed
 - README: updated "Before you begin" and Step 3 to cover the stdio scenario; wizard installs now work as-is rather than requiring a separate HTTP service.

@@ -1,7 +1,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { loadConfig, type MemoryType } from "../config";
-import { automemStore, automemAssociate, setAutoMemMcpServerName } from "../mcp-client";
+import { type MemoryType } from "../config";
+import { automemStore, automemAssociate, loadConfigAndActivate } from "../mcp-client";
 import { evaluateWritePolicy, type MemoryCandidate } from "../write-policy";
 
 const LinkParams = Type.Object({
@@ -30,8 +30,7 @@ export function registerRelationshipTools(pi: ExtensionAPI) {
     promptSnippet: "Use after identifying that two memories are related. Requires both memory IDs and the relationship type.",
     parameters: LinkParams,
     async execute(_toolCallId: string, params: any) {
-      const config = loadConfig();
-      setAutoMemMcpServerName(config.mcpServerName);
+      const config = loadConfigAndActivate();
 
       if (!params.approvedByUser) {
         throw new Error("Confirmation required before linking memories. Re-run with approvedByUser=true only after explicit user approval.\n\nWould link:\n  " + params.memoryId1 + " -> " + params.relationship + " -> " + params.memoryId2);
@@ -54,8 +53,7 @@ export function registerRelationshipTools(pi: ExtensionAPI) {
     promptSnippet: "Use when a memory was wrong or outdated and you want to preserve history. Stores new content as a separate memory, then links old → EVOLVED_INTO/CONTRADICTS → new.",
     parameters: CorrectParams,
     async execute(_toolCallId: string, params: any) {
-      const config = loadConfig();
-      setAutoMemMcpServerName(config.mcpServerName);
+      const config = loadConfigAndActivate();
 
       const candidate: MemoryCandidate = {
         content: params.correction,

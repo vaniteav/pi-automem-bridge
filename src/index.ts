@@ -8,8 +8,7 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { loadConfig } from "./config";
-import { automemHealth, discoverTools, setAutoMemMcpServerName, shutdownAllTransports } from "./mcp-client";
+import { automemHealth, discoverTools, loadConfigAndActivate, shutdownAllTransports } from "./mcp-client";
 import { startupRecall, turnRecall, type RecallResult } from "./recall";
 import { detectProject } from "./project-detect";
 import { buildContextMessage } from "./context-injector";
@@ -19,8 +18,7 @@ import { registerMemoryTools } from "./tools/memory-tools";
 import { registerRelationshipTools } from "./tools/relationship-tools";
 
 export default function (pi: ExtensionAPI) {
-  let config = loadConfig();
-  setAutoMemMcpServerName(config.mcpServerName);
+  let config = loadConfigAndActivate();
   let autoMemHealthy = false;
   let autoMemCount: number | undefined;
   let startupInjected = false;
@@ -35,8 +33,7 @@ export default function (pi: ExtensionAPI) {
 
   // session_start - Load config, check health, run startup recall
   pi.on("session_start", async function(_event: any, ctx: any) {
-    config = loadConfig();
-    setAutoMemMcpServerName(config.mcpServerName);
+    config = loadConfigAndActivate();
 
     await refreshAutoMemHealth(ctx, false);
 

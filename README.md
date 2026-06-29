@@ -351,6 +351,8 @@ import { parseSearchResults } from 'pi-automem-bridge/src/recall';
 
 `detectProject(cwd, prompt, config)` — infer project tag from git remote, folder name, or prompt text.
 
+The MCP server name and connection details are read from `~/.pi/agent/mcp.json` at call time. Use `loadConfigAndActivate()` at the start of each handler — it loads `automem.json`, activates the configured server name, and returns the config object.
+
 ---
 
 ## Credits
