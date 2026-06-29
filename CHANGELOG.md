@@ -8,6 +8,14 @@
 - `shutdownAllTransports()` called on `session_shutdown` to cleanly terminate any stdio subprocess at session end.
 - `loadConfigAndActivate()` exported from `src/mcp-client`: loads `automem.json` and activates the configured server name in one call. Extension API users should prefer this over calling `loadConfig()` and `setAutoMemMcpServerName()` separately.
 
+### Security
+- **`automem_update_memory` write-policy bypass closed**: the update tool now enforces `writePolicy.mode === "off"` and runs `scanForSecrets` on the incoming `content` and `metadata` fields before confirmation. Previously all fields were passed raw to AutoMem with no policy or secret check.
+- **Category whitespace bypass closed**: categories are now trimmed as well as lowercased in `normalizeCandidate` and in the blocked/confirm/auto category sets. A category like `"secret "` (trailing space) previously evaded the blocked-category check.
+- **AWS secret access key detection added**: `AWS_SECRET_ACCESS_KEY=...` was not matched by the prior `\bsecret\b` pattern (underscore is a word char). Added a dedicated pattern and generalized the compound-name assignment pattern.
+- **HTTP plaintext auth warning**: `mcp.json` entries with an `http://` URL and a non-localhost host now log a warning that the auth token will be sent in plaintext.
+- **Relationship type validated before write**: `automem_link_memories` now validates `relationship` against the 11-type enum and clamps `strength` to [0, 1] before calling AutoMem.
+- **Prompt-injection framing**: recalled memory text injected into the system prompt is now prefixed with an explicit label identifying it as reference data, not agent instructions.
+
 ### Changed
 - README: updated "Before you begin" and Step 3 to cover the stdio scenario; wizard installs now work as-is rather than requiring a separate HTTP service.
 

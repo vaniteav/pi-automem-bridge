@@ -2,6 +2,11 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { type MemoryType } from "../config";
 import { automemStore, automemAssociate, loadConfigAndActivate } from "../mcp-client";
+
+const VALID_RELATIONSHIP_TYPES = new Set([
+  "RELATES_TO", "LEADS_TO", "OCCURRED_BEFORE", "PREFERS_OVER", "EXEMPLIFIES",
+  "CONTRADICTS", "REINFORCES", "INVALIDATED_BY", "EVOLVED_INTO", "DERIVED_FROM", "PART_OF",
+]);
 import { evaluateWritePolicy, type MemoryCandidate } from "../write-policy";
 
 const LinkParams = Type.Object({
@@ -32,11 +37,15 @@ export function registerRelationshipTools(pi: ExtensionAPI) {
     async execute(_toolCallId: string, params: any) {
       const config = loadConfigAndActivate();
 
+      if (!VALID_RELATIONSHIP_TYPES.has(params.relationship)) {
+        throw new Error("Invalid relationship type: \"" + params.relationship + "\". Must be one of: " + Array.from(VALID_RELATIONSHIP_TYPES).join(", "));
+      }
+
       if (!params.approvedByUser) {
         throw new Error("Confirmation required before linking memories. Re-run with approvedByUser=true only after explicit user approval.\n\nWould link:\n  " + params.memoryId1 + " -> " + params.relationship + " -> " + params.memoryId2);
       }
 
-      const strength = typeof params.strength === "number" ? params.strength : 0.5;
+      const strength = Math.max(0, Math.min(1, typeof params.strength === "number" ? params.strength : 0.5));
       const result = await automemAssociate(params.memoryId1, params.memoryId2, params.relationship, strength);
       const text = result.content?.[0]?.text || "Association created.";
       return {

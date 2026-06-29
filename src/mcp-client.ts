@@ -96,6 +96,11 @@ function readMcpServerEntry(serverName: string): ServerEntry {
         ' — most AutoMem deployments require the /mcp path suffix.'
       );
     }
+    if (rawUrl.startsWith("http://") && !rawUrl.includes("localhost") && !rawUrl.includes("127.0.0.1")) {
+      console.warn(
+        '[automem] mcp.json URL uses http:// for a non-local host — auth token will be sent in plaintext. Use https:// for remote deployments.'
+      );
+    }
     const rawAuth = server.headers?.Authorization || "";
     const varMatch = rawAuth.match(/\$\{([^}]+)\}/);
     if (varMatch && !process.env[varMatch[1]]) {

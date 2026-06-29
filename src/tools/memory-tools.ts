@@ -3,6 +3,7 @@ import { Type } from "typebox";
 import { type MemoryType } from "../config";
 import { automemRecall, automemStore, automemUpdate, loadConfigAndActivate } from "../mcp-client";
 import { evaluateWritePolicy, formatCandidate, type MemoryCandidate } from "../write-policy";
+import { scanForSecrets } from "../secret-scan";
 import { parseSearchResults } from "../recall";
 
 // ---------------------------------------------------------------------------
@@ -176,6 +177,19 @@ export function registerMemoryTools(pi: ExtensionAPI) {
     async execute(_toolCallId, params, _signal, _onUpdate, ctx: any) {
       if (!params.memoryId) {
         throw new Error("memoryId is required for automem_update_memory.");
+      }
+
+      const config = loadConfigAndActivate();
+      if (config.writePolicy.mode === "off") {
+        throw new Error("Write policy mode is off. Memory updates are disabled.");
+      }
+
+      const findings = [
+        ...(params.content ? scanForSecrets(params.content) : []),
+        ...(params.metadata ? scanForSecrets((() => { try { return JSON.stringify(params.metadata); } catch (_e) { return ""; } })()) : []),
+      ];
+      if (findings.length > 0) {
+        throw new Error("Secret/credential detected. Update blocked.\n" + findings.map((f: any) => "- " + f.kind + ": " + f.match).join("\n"));
       }
 
       if (!params.approvedByUser) {

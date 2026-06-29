@@ -37,7 +37,7 @@ export function normalizeCandidate(input: MemoryCandidate, config: AutoMemConfig
     importance: clampNumber(input.importance, 0, 1, defaultImportanceForType(input.type)),
     confidence: clampNumber(input.confidence, 0, 1, 0.9),
     source: input.source || config.writePolicy.defaultSource || "pi-session",
-    category: (input.category || inferCategory(input.type, tags)).toLowerCase(),
+    category: (input.category || inferCategory(input.type, tags)).toLowerCase().trim(),
     metadata: input.metadata,
   };
 }
@@ -55,7 +55,8 @@ export function evaluateWritePolicy(input: MemoryCandidate, config: AutoMemConfi
   const mode = ((config.writePolicy as any).mode || "propose") as WriteMode;
   const preferredMax = config.behavior.preferredContentLength || 500;
   const hardMax = config.behavior.maxContentLength || 2000;
-  const minImportance = Number((config.writePolicy as any).minImportanceToWrite ?? 0.7);
+  const _rawMin = Number((config.writePolicy as any).minImportanceToWrite ?? 0.7);
+  const minImportance = Number.isFinite(_rawMin) ? _rawMin : 0.7;
 
   if (mode === "off") reasons.push("write policy mode is off");
   if (!normalized.content) reasons.push("content is empty");
@@ -98,18 +99,20 @@ export function formatCandidate(candidate: MemoryCandidate): string {
   );
 }
 
+function normalizeCategory(c: string): string { return c.toLowerCase().trim(); }
+
 function isBlockedCategory(candidate: MemoryCandidate, config: AutoMemConfig): boolean {
-  const blocked = new Set((config.writePolicy.blockedCategories || []).map(c => c.toLowerCase()));
+  const blocked = new Set((config.writePolicy.blockedCategories || []).map(normalizeCategory));
   return blocked.has(candidate.category || "") || candidate.tags.some(t => blocked.has(t));
 }
 
 function isConfirmCategory(candidate: MemoryCandidate, config: AutoMemConfig): boolean {
-  const confirm = new Set((config.writePolicy.confirmCategories || []).map(c => c.toLowerCase()));
+  const confirm = new Set((config.writePolicy.confirmCategories || []).map(normalizeCategory));
   return confirm.has(candidate.category || "") || candidate.tags.some(t => confirm.has(t));
 }
 
 function isAutoCategory(candidate: MemoryCandidate, config: AutoMemConfig): boolean {
-  const auto = new Set((config.writePolicy.autoWriteCategories || []).map(c => c.toLowerCase()));
+  const auto = new Set((config.writePolicy.autoWriteCategories || []).map(normalizeCategory));
   return auto.has(candidate.category || "") || auto.has(candidate.type.toLowerCase()) || candidate.tags.some(t => auto.has(t));
 }
 
