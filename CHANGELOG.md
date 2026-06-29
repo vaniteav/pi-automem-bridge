@@ -1,6 +1,8 @@
 # Changelog
 
-## 0.4.0 — 2026-06-28
+## 1.0.0 — 2026-06-28
+
+First stable release. The package is feature-complete for its purpose — automatic recall and a guarded write pipeline for pi — and the public surface is now considered stable: the tool names/parameters, the `automem.json` config schema, and the documented Extension API exports. Breaking changes to those will bump the major version. Ongoing work is maintenance: tracking breaking changes in pi and AutoMem as they ship. (Functionally a superset of the 0.x line — same features, security-hardened and fully documented.)
 
 ### Added
 - **Stdio transport**: the bridge now supports local mcp-automem subprocess installs in addition to HTTP endpoints. If your mcp.json server entry has a `command` field (as created by the mcp-automem wizard for Claude Desktop, Cursor, etc.), the bridge spawns and manages the subprocess directly, completing the MCP initialization handshake before accepting tool calls. Transport is detected automatically — `url` → HTTP, `command` → stdio. No config changes needed for existing setups.
@@ -20,6 +22,7 @@
 - **`NaN` write-threshold guarded**: a non-finite `minImportanceToWrite` in config now falls back to `0.7` instead of silently disabling the importance gate.
 
 ### Changed
+- **Pinned the pi SDK peer dependency** to a tested range (`@earendil-works/pi-coding-agent >=0.78.0 <0.81.0`). A future breaking pi release now surfaces as a clear peer-dependency warning at install time instead of a silent runtime break; the ceiling is widened deliberately after each SDK version is tested.
 - **Internal refactor (ponytail audit)**: removed dead code and simplified the MCP client with no behavior change — dropped the unused `McpLifecycle` type and `getAutoMemMcpLifecycle()`, the dead `hasSecrets` helper, and a speculative NDJSON branch in the recall parser; replaced the cached-server-config object plus the 3-way tool-discovery index (and its 12-entry fallback map) with a lightweight mtime/size signature map and a single `automem_`-prefix flag.
 - README: updated "Before you begin" and Step 3 to cover the stdio scenario (wizard installs now work as-is rather than requiring a separate HTTP service); documented secret/PII write-blocking and the https-for-auth requirement; added a **Security & privacy** section.
 
