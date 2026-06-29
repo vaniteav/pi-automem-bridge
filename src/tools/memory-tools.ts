@@ -189,7 +189,23 @@ export function registerMemoryTools(pi: ExtensionAPI) {
         ...(params.metadata ? scanForSecrets((() => { try { return JSON.stringify(params.metadata); } catch (_e) { return ""; } })()) : []),
       ];
       if (findings.length > 0) {
-        throw new Error("Secret/credential detected. Update blocked.\n" + findings.map((f: any) => "- " + f.kind + ": " + f.match).join("\n"));
+        // List only the kinds — never echo the matched fragment back into an error.
+        throw new Error("Secret/credential detected. Update blocked.\n" + findings.map((f: any) => "- " + f.kind).join("\n"));
+      }
+
+      // Enforce the security-relevant subset of the write policy on the update
+      // path, mirroring the gate automem_commit_memory gets via evaluateWritePolicy:
+      // content-length cap and blocked categories. (Secret/PII scan handled above;
+      // mode === "off" handled above.) Importance/type are intentionally not gated
+      // here since updates legitimately leave them unchanged.
+      const hardMax = (config.behavior && config.behavior.maxContentLength) || 2000;
+      if (typeof params.content === "string" && params.content.replace(/\s+/g, " ").trim().length > hardMax) {
+        throw new Error("Update blocked: content exceeds the configured hard length limit (" + hardMax + " chars).");
+      }
+      const blockedCats = new Set((config.writePolicy.blockedCategories || []).map((c: string) => String(c).toLowerCase().trim()));
+      const updateTags = Array.isArray(params.tags) ? params.tags.map((t: string) => String(t).toLowerCase().trim()) : [];
+      if (blockedCats.size > 0 && updateTags.some((t: string) => blockedCats.has(t))) {
+        throw new Error("Update blocked: a provided tag maps to a write-policy blocked category.");
       }
 
       if (!params.approvedByUser) {

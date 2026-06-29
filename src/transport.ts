@@ -26,11 +26,22 @@ export interface Transport {
 export class HttpTransport implements Transport {
   private url: string;
   private auth: string;
+  private allowAuth: boolean;
   private callId = 0;
 
   constructor(url: string, auth: string) {
     this.url = url;
     this.auth = auth;
+    // Enforce, don't just warn: never transmit the Authorization token over a
+    // plaintext connection to a non-loopback host. A misconfigured mcp.json
+    // pointing at an http:// remote would otherwise leak the credential.
+    this.allowAuth = isSecureAuthTarget(url);
+    if (auth && !this.allowAuth) {
+      console.warn(
+        "[automem] Authorization token withheld: " + url + " is not https:// or a loopback host. " +
+        "The request will be sent without credentials. Use https:// for remote AutoMem deployments."
+      );
+    }
   }
 
   async rpc(method: string, params: object, timeoutMs: number = 30000): Promise<any> {
@@ -49,7 +60,7 @@ export class HttpTransport implements Transport {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          ...(this.auth ? { Authorization: this.auth } : {}),
+          ...(this.auth && this.allowAuth ? { Authorization: this.auth } : {}),
           Accept: "application/json, text/event-stream",
         },
         body: JSON.stringify(body),
@@ -74,6 +85,21 @@ export class HttpTransport implements Transport {
   }
 }
 
+/** True if it is safe to send an Authorization header to this URL: https, or
+ *  http to a loopback host. Anything else (or an unparseable URL) is unsafe. */
+function isSecureAuthTarget(url: string): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol === "https:") return true;
+  if (parsed.protocol !== "http:") return false;
+  const host = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  return host === "localhost" || host === "127.0.0.1" || host === "::1";
+}
+
 async function parseJsonRpcResponse(resp: Response): Promise<any> {
   const ct = resp.headers.get("content-type") || "";
   if (ct.includes("text/event-stream")) {
@@ -92,6 +118,22 @@ async function parseJsonRpcResponse(resp: Response): Promise<any> {
 // ---------------------------------------------------------------------------
 // Stdio transport
 // ---------------------------------------------------------------------------
+
+// Shell metacharacters that could break out of the command line under shell:true.
+const SHELL_METACHARACTERS = /[&|;<>$`(){}\n\r"'^%!]/;
+
+/** Reject a stdio command/args that contain shell metacharacters, which could be
+ *  used for command injection when spawned through the Windows shell. */
+function assertSafeSpawn(command: string, args: string[]): void {
+  for (const part of [command, ...args]) {
+    if (typeof part !== "string" || SHELL_METACHARACTERS.test(part)) {
+      throw new Error(
+        "[automem] Refusing to spawn the MCP stdio subprocess: the command or arguments " +
+        "contain unsafe shell characters. Check the command/args in mcp.json."
+      );
+    }
+  }
+}
 
 const MCP_PROTOCOL_VERSION = "2024-11-05";
 
@@ -113,6 +155,11 @@ export class StdioTransport implements Transport {
   }
 
   async initialize(): Promise<void> {
+    // On Windows we spawn through cmd.exe (shell: true) to resolve .cmd shims
+    // (npx.cmd, node.cmd, etc.). That makes the command line subject to shell
+    // interpretation, so a malicious or malformed mcp.json could inject extra
+    // commands via metacharacters. Reject any unsafe characters before spawning.
+    assertSafeSpawn(this.command, this.args);
     this.proc = spawn(this.command, this.args, {
       env: { ...process.env, ...this.spawnEnv },
       stdio: ["pipe", "pipe", "pipe"],

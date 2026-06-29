@@ -12,6 +12,9 @@ const SECRET_PATTERNS: Array<{ kind: string; regex: RegExp }> = [
   { kind: "aws-secret-key", regex: /\bAWS_SECRET_ACCESS_KEY\s*[:=]\s*[^\s'"]{20,}/i },
   { kind: "secret-assignment", regex: /\b(?:api[_-]?key|token|secret|password|passwd|credential)[_a-z0-9]*\s*[:=]\s*['\"]?[^\s'\"]{20,}/i },
   { kind: "connection-string", regex: /\b(?:postgres|mysql|mongodb|redis):\/\/[^\s]+/i },
+  // PII — keep these conservative (very low false-positive) since a finding blocks the write.
+  { kind: "pii-ssn", regex: /\b\d{3}-\d{2}-\d{4}\b/ },
+  { kind: "pii-email", regex: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/ },
 ];
 
 export function scanForSecrets(text: string): SecretFinding[] {
@@ -25,7 +28,9 @@ export function scanForSecrets(text: string): SecretFinding[] {
   return findings;
 }
 
-function redact(value: string): string {
-  if (value.length <= 12) return "[redacted]";
-  return value.slice(0, 6) + "…" + value.slice(-4);
+function redact(_value: string): string {
+  // Never reveal any portion of a detected secret/PII. Even a 6-char prefix can
+  // be sensitive, and these findings surface in thrown error messages and tool
+  // `details`, so the match must be fully opaque.
+  return "[redacted]";
 }
