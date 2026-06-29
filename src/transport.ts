@@ -159,7 +159,11 @@ export class StdioTransport implements Transport {
     // (npx.cmd, node.cmd, etc.). That makes the command line subject to shell
     // interpretation, so a malicious or malformed mcp.json could inject extra
     // commands via metacharacters. Reject any unsafe characters before spawning.
-    assertSafeSpawn(this.command, this.args);
+    // Only relevant when shell is actually used (Windows); POSIX spawn passes
+    // args directly to execvp with no shell, so metacharacters are inert there.
+    if (process.platform === "win32") {
+      assertSafeSpawn(this.command, this.args);
+    }
     this.proc = spawn(this.command, this.args, {
       env: { ...process.env, ...this.spawnEnv },
       stdio: ["pipe", "pipe", "pipe"],

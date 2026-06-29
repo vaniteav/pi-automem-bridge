@@ -116,7 +116,7 @@ function isAutoCategory(candidate: MemoryCandidate, config: AutoMemConfig): bool
   return auto.has(candidate.category || "") || auto.has(candidate.type.toLowerCase()) || candidate.tags.some(t => auto.has(t));
 }
 
-function inferCategory(type: MemoryType, tags: string[]): string {
+export function inferCategory(type: MemoryType, tags: string[]): string {
   if (tags.includes("preference")) return "preference";
   if (tags.includes("decision")) return "technical-decision";
   if (tags.includes("bug-fix")) return "bug-fix";

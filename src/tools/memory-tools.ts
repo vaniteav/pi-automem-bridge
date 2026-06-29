@@ -2,7 +2,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { type MemoryType } from "../config";
 import { automemRecall, automemStore, automemUpdate, loadConfigAndActivate } from "../mcp-client";
-import { evaluateWritePolicy, formatCandidate, type MemoryCandidate } from "../write-policy";
+import { evaluateWritePolicy, formatCandidate, inferCategory, type MemoryCandidate } from "../write-policy";
 import { scanForSecrets } from "../secret-scan";
 import { parseSearchResults } from "../recall";
 
@@ -204,8 +204,12 @@ export function registerMemoryTools(pi: ExtensionAPI) {
       }
       const blockedCats = new Set((config.writePolicy.blockedCategories || []).map((c: string) => String(c).toLowerCase().trim()));
       const updateTags = Array.isArray(params.tags) ? params.tags.map((t: string) => String(t).toLowerCase().trim()) : [];
-      if (blockedCats.size > 0 && updateTags.some((t: string) => blockedCats.has(t))) {
-        throw new Error("Update blocked: a provided tag maps to a write-policy blocked category.");
+      // Mirror the commit path: a blocked category can come from an explicit tag OR
+      // from the category inferred from the (type, tags) pair — not just a raw tag.
+      const inferredCategory = params.type ? inferCategory(params.type as MemoryType, updateTags).toLowerCase().trim() : null;
+      const effectiveCategories = [...updateTags, ...(inferredCategory ? [inferredCategory] : [])];
+      if (blockedCats.size > 0 && effectiveCategories.some((c: string) => blockedCats.has(c))) {
+        throw new Error("Update blocked: the update maps to a write-policy blocked category.");
       }
 
       if (!params.approvedByUser) {
