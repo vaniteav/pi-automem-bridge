@@ -62,7 +62,7 @@ try {
 // 3. CHANGELOG has an entry for this version ----------------------------------
 try {
   const changelog = readFileSync(resolve(root, "CHANGELOG.md"), "utf8");
-  if (!new RegExp("^##\\s*" + pkg.version.replace(/\./g, "\\."), "m").test(changelog))
+  if (!new RegExp("^##\\s*" + pkg.version.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "m").test(changelog))
     fail("CHANGELOG.md has no '## " + pkg.version + "' section");
   else pass("CHANGELOG.md documents " + pkg.version);
 } catch { fail("could not read CHANGELOG.md"); }
