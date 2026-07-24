@@ -20,7 +20,7 @@
     "url": "https://github.com/vaniteav/pi-automem-bridge.git"
   },
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": ">=0.78.0 <0.81.0",
+    "@earendil-works/pi-coding-agent": ">=0.78.0",
     "typebox": "*"
   },
   "scripts": {
