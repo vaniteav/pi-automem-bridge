@@ -42,20 +42,25 @@ jobs:
           echo "testing pi - $(node -p "require('./node_modules/@earendil-works/pi-coding-agent/package.json').version")"
           echo "typebox    - $(node -p "require('./node_modules/typebox/package.json').version")"
 
-      # ⚠ KNOWN GAP — this job is weaker here than in pi-fox, deliberately.
+      # GAP CLOSED 2026-08-02 (TEA-418). A test run alone does NOT catch a removed
+      # API: tsx transpiles without type-checking, so a missing named import
+      # resolves to `undefined` instead of throwing. Verified as a pair on this
+      # very package — importing a non-existent `Options` from typebox (the exact
+      # shape of pi's 0.83.0 removals) gave:
       #
-      # pi-fox's equivalent runs `tsc --noEmit --skipLibCheck` before its suite,
-      # because a test run alone does NOT catch a removed API: verified
-      # 2026-08-02, importing a non-existent export left pi-fox's whole suite
-      # green, and only tsc flagged it (TS2614). That is the exact shape of pi's
-      # 0.83.0 TypeBox removals.
+      #     npx tsc --noEmit --skipLibCheck   ->  exit 2, TS2614   (sees it)
+      #     npm test                          ->  exit 0           (structurally blind)
       #
-      # This package cannot do the same yet: it has TypeScript source but no
-      # tsconfig.json and no `typescript` dev dependency. Adding those is a
-      # design decision (strictness, target, module resolution) that can surface
-      # a wall of pre-existing errors, so it is not being invented here.
+      # --skipLibCheck is load-bearing, not a shortcut: without it tsc also checks
+      # pi's own bundled .d.ts files, and a step that is red on clean code gets
+      # ignored within a week.
       #
-      # Until that lands, a green run here means "nothing THROWS at runtime",
-      # not "the SDK surface we compile against is intact." See TEA-400.
+      # The tsconfig added for this did surface 2 pre-existing errors, as the note
+      # that used to sit here predicted. Both were real and both were fixed rather
+      # than suppressed: ctx.ui.notify(..., "success") — the SDK has no success
+      # variant — and an unreconcilable union return in automem_correct_memory.
+      - name: Type-check against the newest SDK (catches removed APIs)
+        run: npx tsc --noEmit --skipLibCheck
+
       - name: Run the offline suite against it
         run: npm test

@@ -553,7 +553,12 @@ const { registerStatusCommand } = await import("../src/commands/status");
   await commands["automem-status"].handler("", ctx);
 
   assert.ok(
-    notifications.some(n => n.level === "success" && n.message.includes("42 memories")),
+    // "info", not "success". The SDK's notify accepts error | info | warning only; this
+    // assertion previously encoded the same invalid variant the code passed, so the suite
+    // was green while the healthy path called the API wrong. A string-literal assertion
+    // can only prove what the code passes, never that the value is legal — which is why
+    // the type-check step added for TEA-418 is what surfaced it.
+    notifications.some(n => n.level === "info" && n.message.includes("42 memories")),
     "/automem-status reports healthy with memory count",
   );
   assert.ok(
