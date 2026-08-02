@@ -1,12 +1,27 @@
 # Changelog
 
-## 2026-08-02 — maintenance, no npm release
+## 1.0.1 — 2026-08-02
 
-No version bump and no republish: this branch touches only `.github/workflows/`,
-`tests/` and this file, none of which are in `files[]`. The published payload
-(`src`, `skills`, `prompts`, `examples`, `README.md`, `LICENSE`) is unchanged, so
-a republish would ship a byte-identical package under a new number. Pushing to
-GitHub is the whole release here.
+### Fixed
+- **The published package's pi peer range was stale by three minor versions.**
+  `pi-automem-bridge@1.0.0` on npm declares
+  `"@earendil-works/pi-coding-agent": ">=0.78.0 <0.81.0"`, while the repository has
+  carried the corrected `">=0.78.0"` since `eb10638`. 1.0.0 was published
+  2026-06-29 and the ceiling was never republished, so every install against pi
+  0.81, 0.82 or 0.83 hits a peer conflict on the *published* metadata — including
+  the current 0.83.0. This release exists solely to ship the range that the repo
+  already had. Same class of ceiling that previously blocked pi 0.82.0's security
+  fixes from reaching installs.
+
+  Found by the weekly sweep routine's first run, which compares the **published
+  artifact** against the repo rather than comparing a branch diff against `main`.
+
+### Note on the preceding maintenance work
+The 2026-08-02 maintenance commits themselves (`.github/workflows/`, `tests/`,
+this file) touch nothing in `files[]` and genuinely needed no release. That
+reasoning was correct and separately insufficient: it answered "did this branch
+change the published payload?" when the question that mattered was "does the
+published artifact still match the repo?" It did not.
 
 ### Verified
 - Compatible with pi SDK 0.83.0. Its breaking change removed `Type.Base`, `Type.Awaited`, `Type.Promise`, `Type.AsyncIterator`, `Type.Iterator`, `Type.Options` and `Value.Mutate`; none are used here. Full and smoke suites pass against 0.83.0, so the declared `>=0.78.0` peer range remains accurate.
