@@ -33,7 +33,16 @@ const SECRET_PII = [
   { kind: "real name / handle leak", re: /janiceftw|\bjanice\b/i },
   { kind: "windows username path", re: /\bjanic\b|C:\\Users/i },
   { kind: "unix home path", re: /\/home\/[a-z]|\/Users\/[a-z]/i },
-  { kind: "private infra (railway/automem prod)", re: /railway\.app|mcp-automem-production/i },
+  // Matches a CONCRETE Railway instance hostname, not the vendor domain. The old
+  // rule was /railway\.app|.../ which fired on every documentation example, since
+  // any usable "point this at your AutoMem" snippet must contain the domain. A gate
+  // that blocks every release teaches you to override it, so it was narrowed rather
+  // than bypassed. `your-service*` is the documented placeholder in README.md and
+  // src/mcp-client.ts; the lookbehind stops the match starting mid-token and
+  // sneaking past the lookahead. Verified both directions before shipping:
+  // mcp-automem-production / janice-prod / automem-abc123 .up.railway.app all HIT;
+  // <your-service-name> and your-service both MISS.
+  { kind: "private infra (railway/automem prod)", re: /(?<![a-z0-9-])(?!your-service)[a-z0-9][a-z0-9-]*\.up\.railway\.app|mcp-automem-production/i },
   { kind: "hostname", re: /BATTLESTATION/ },
   { kind: "openai key", re: /\bsk-[A-Za-z0-9]{20,}\b/ },
   { kind: "github token", re: /\bgh[pousr]_[A-Za-z0-9]{20,}\b/ },
