@@ -1,0 +1,28 @@
+# Runs the offline suite on every push and PR.
+#
+# Only `npm test` runs here. The package deliberately tiers its suites:
+#   npm test        — offline; unit + policy + review-fix regressions
+#   npm run test:smoke — exercises the real MCP client, needs a reachable AutoMem
+#   npm run test:live  — writes to a live AutoMem
+# Only the first can pass on a clean runner with no AutoMem, so only the first
+# belongs in CI. A permanently-red job gets ignored, which is worse than no job.
+name: test
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: [20, 22]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - run: npm test

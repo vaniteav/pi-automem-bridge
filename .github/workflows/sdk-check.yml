@@ -1,0 +1,61 @@
+# The question this job answers: does the NEWEST pi still work with us?
+#
+# test.yml answers "did we break ourselves?" — it only runs when we push.
+# This one runs on a timer, because our dependencies move when we don't.
+#
+# This package declares `"@earendil-works/pi-coding-agent": ">=0.78.0"` — an
+# open upper bound, so npm resolves any future pi. pi ships breaking changes in
+# MINOR versions (0.83.0 removed seven TypeBox APIs and told extension authors
+# to migrate), so that range will eventually be wrong with no warning.
+name: sdk-check
+
+on:
+  schedule:
+    # Mondays 09:17 UTC. Deliberately off the hour — GitHub queues scheduled
+    # jobs, and everything cron'd to :00 competes for the same runners.
+    - cron: "17 9 * * 1"
+  workflow_dispatch: # lets you run it on demand from the Actions tab
+
+jobs:
+  newest-pi:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Record the locked pi version
+        run: echo "locked pi - $(node -p "require('./node_modules/@earendil-works/pi-coding-agent/package.json').version")"
+
+      # --no-save so package.json and the lockfile are never rewritten. We want
+      # to TEST the newest pi, not adopt it — adopting it is a decision (TEA-400).
+      - name: Install the newest pi
+        run: npm install --no-save @earendil-works/pi-coding-agent@latest
+
+      - name: Record what we actually resolved
+        run: |
+          echo "testing pi - $(node -p "require('./node_modules/@earendil-works/pi-coding-agent/package.json').version")"
+          echo "typebox    - $(node -p "require('./node_modules/typebox/package.json').version")"
+
+      # ⚠ KNOWN GAP — this job is weaker here than in pi-fox, deliberately.
+      #
+      # pi-fox's equivalent runs `tsc --noEmit --skipLibCheck` before its suite,
+      # because a test run alone does NOT catch a removed API: verified
+      # 2026-08-02, importing a non-existent export left pi-fox's whole suite
+      # green, and only tsc flagged it (TS2614). That is the exact shape of pi's
+      # 0.83.0 TypeBox removals.
+      #
+      # This package cannot do the same yet: it has TypeScript source but no
+      # tsconfig.json and no `typescript` dev dependency. Adding those is a
+      # design decision (strictness, target, module resolution) that can surface
+      # a wall of pre-existing errors, so it is not being invented here.
+      #
+      # Until that lands, a green run here means "nothing THROWS at runtime",
+      # not "the SDK surface we compile against is intact." See TEA-400.
+      - name: Run the offline suite against it
+        run: npm test
