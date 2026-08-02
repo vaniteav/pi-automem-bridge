@@ -22,7 +22,9 @@ export function registerStatusCommand(pi: {
 
       if (health.healthy) {
         const count = health.memoryCount != null ? " (" + health.memoryCount + " memories)" : "";
-        ctx.ui.notify("AutoMem: healthy" + count, "success");
+        // "info", not "success" — the SDK's notify has no success variant (error | info |
+        // warning). Matches how index.ts renders this same healthy message.
+        ctx.ui.notify("AutoMem: healthy" + count, "info");
       } else {
         ctx.ui.notify("AutoMem: unhealthy - " + (health.error || "unknown error"), "error");
       }

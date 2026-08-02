@@ -61,7 +61,14 @@ export function registerRelationshipTools(pi: ExtensionAPI) {
     description: "Store a correction to an existing memory and link old → new with a provenance relationship. Preserves history; use automem_update_memory for simple in-place edits.",
     promptSnippet: "Use when a memory was wrong or outdated and you want to preserve history. Stores new content as a separate memory, then links old → EVOLVED_INTO/CONTRADICTS → new.",
     parameters: CorrectParams,
-    async execute(_toolCallId: string, params: any) {
+    // The two exits carry genuinely different payloads — a correction whose new memory ID
+    // came back, and one where the store succeeded but the ID could not be parsed so no
+    // link was made. Declared as a union so both are legal; without it TypeScript infers
+    // the shape of whichever branch it sees first and rejects the other.
+    async execute(_toolCallId: string, params: any): Promise<{
+      content: { type: "text"; text: string }[];
+      details: { storeText: string } | { originalId: string; newId: string; relationship: string };
+    }> {
       const config = loadConfigAndActivate();
 
       const candidate: MemoryCandidate = {
