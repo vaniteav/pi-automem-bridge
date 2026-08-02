@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-08-02 — unreleased maintenance
+
+### Verified
+- Compatible with pi SDK 0.83.0. Its breaking change removed `Type.Base`, `Type.Awaited`, `Type.Promise`, `Type.AsyncIterator`, `Type.Iterator`, `Type.Options` and `Value.Mutate`; none are used here. Full and smoke suites pass against 0.83.0, so the declared `>=0.78.0` peer range remains accurate.
+
+### Fixed
+- Test env restore assigned `undefined` back to `process.env.AUTOMEM_CONFIG_PATH`, which coerces to the string `"undefined"` — truthy, so `resolveConfigPath()` resolved `./undefined` instead of the default path for every subsequent test in the file. Three sites now delete the key rather than reassigning, matching the pattern already used in `tests/phase1-smoke.ts`.
+
 ## 1.0.0 — 2026-06-28
 
 First stable release. The package is feature-complete for its purpose — automatic recall and a guarded write pipeline for pi — and the public surface is now considered stable: the tool names/parameters, the `automem.json` config schema, and the documented Extension API exports. Breaking changes to those will bump the major version. Ongoing work is maintenance: tracking breaking changes in pi and AutoMem as they ship. (Functionally a superset of the 0.x line — same features, security-hardened and fully documented.)

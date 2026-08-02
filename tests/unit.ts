@@ -122,7 +122,10 @@ import { registerRelationshipTools } from "../src/tools/relationship-tools";
   const oldEnv = process.env.AUTOMEM_CONFIG_PATH;
   process.env.AUTOMEM_CONFIG_PATH = configPath;
   const config = loadConfig();
-  process.env.AUTOMEM_CONFIG_PATH = oldEnv;
+  // Assigning undefined to process.env coerces to the STRING "undefined", which is
+  // truthy — resolveConfigPath would then resolve ./undefined instead of the default.
+  if (oldEnv === undefined) delete process.env.AUTOMEM_CONFIG_PATH;
+  else process.env.AUTOMEM_CONFIG_PATH = oldEnv;
   console.warn = originalWarn;
 
   assert.equal(config.behavior.displayRecall, "summary", "invalid displayRecall falls back to summary");

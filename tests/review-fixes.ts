@@ -236,7 +236,8 @@ const { registerStatusCommand } = await import("../src/commands/status");
   const old = process.env.AUTOMEM_CONFIG_PATH;
   process.env.AUTOMEM_CONFIG_PATH = configPath;
   const cfg = loadConfig();
-  process.env.AUTOMEM_CONFIG_PATH = old;
+  if (old === undefined) delete process.env.AUTOMEM_CONFIG_PATH;
+  else process.env.AUTOMEM_CONFIG_PATH = old;
 
   assert.equal(
     Object.getPrototypeOf(cfg),
@@ -510,7 +511,8 @@ const { registerStatusCommand } = await import("../src/commands/status");
   for (const h of handlers.before_agent_start || []) {
     result = await h({ prompt: "continue", systemPrompt: "BASE" }, ctx);
   }
-  process.env.AUTOMEM_CONFIG_PATH = oldConfigPath;
+  if (oldConfigPath === undefined) delete process.env.AUTOMEM_CONFIG_PATH;
+  else process.env.AUTOMEM_CONFIG_PATH = oldConfigPath;
 
   assert.ok(recallCalls >= 2, "before_agent_start retries failed startup recall");
   assert.ok(
