@@ -1,6 +1,12 @@
 # Changelog
 
-## 2026-08-02 — unreleased maintenance
+## 2026-08-02 — maintenance, no npm release
+
+No version bump and no republish: this branch touches only `.github/workflows/`,
+`tests/` and this file, none of which are in `files[]`. The published payload
+(`src`, `skills`, `prompts`, `examples`, `README.md`, `LICENSE`) is unchanged, so
+a republish would ship a byte-identical package under a new number. Pushing to
+GitHub is the whole release here.
 
 ### Verified
 - Compatible with pi SDK 0.83.0. Its breaking change removed `Type.Base`, `Type.Awaited`, `Type.Promise`, `Type.AsyncIterator`, `Type.Iterator`, `Type.Options` and `Value.Mutate`; none are used here. Full and smoke suites pass against 0.83.0, so the declared `>=0.78.0` peer range remains accurate.
