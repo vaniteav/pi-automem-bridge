@@ -1,5 +1,33 @@
 # Changelog
 
+## Unreleased
+
+### Security
+- **pi's vulnerable transitive dependencies cleared by the SDK bump.** `brace-expansion` 5.0.7 → 5.0.9 (GHSA-mh99-v99m-4gvg, GHSA-rgw5-rvv9-x895) and `undici` 8.5.0 → 8.9.0 (GHSA-8xcm-r25x-g524, GHSA-4cwx-7wf7-3272, GHSA-m8rv-5g2x-5cg5, GHSA-jr45-8vmc-qm54, GHSA-v3r7-h72x-cjcm), both reachable only through `@earendil-works/pi-coding-agent`. `npm audit` goes from 3 vulnerable packages (2 high, 1 moderate) covering seven advisories to **0 vulnerabilities**.
+
+### Changed
+- **pi SDK lockfile 0.82.1 → 0.84.1.** `pi-agent-core`, `pi-ai` and `pi-tui` move with it; `pi-client`, `pi-protocol`, `pi-telemetry` and `grok-mermaid` arrive as new 0.84.x transitives. `package.json` is untouched — see the decision below. The `typebox` this package imports is the top-level 1.3.8 and is unaffected; only pi's own nested copy moved (1.1.38 → 1.3.7).
+
+### Verified
+- Compatible with pi SDK 0.84.1. `npx tsc --noEmit --skipLibCheck` is clean and the full offline suite (32 checks across `unit`, `phase2-policy`, `review-fixes`) passes, with output byte-identical to the 0.82.1 run. Every step of the `sdk-check` workflow was replayed locally end to end.
+- Neither 0.84 release announces a deprecation: the shipped changelog has no `Deprecated` heading and no occurrence of "deprecat" in either section. The only `@deprecated` marker in pi's extension-API typings is `usesCallbackServer` on OAuth auth methods (`dist/core/extensions/types.d.ts:1064`), which this package does not use. Nothing to migrate.
+
+### Decision — adopt pi 0.84.1 in the lockfile, leave the peer range at `>=0.78.0`
+
+**Context.** The lockfile pinned pi 0.82.1 while npm's `latest` had moved to 0.84.1. 0.82.1 pulls a `brace-expansion` and an `undici` carrying seven open advisories between them, all reachable only through pi. `package.json` declares pi as a peer dependency at `">=0.78.0"` with no upper bound, so the lockfile — not the manifest — is what decides which pi CI and contributors actually build against.
+
+**Decision.** Bump the lockfile to 0.84.1 via `npm update @earendil-works/pi-coding-agent` and leave `package.json` completely unchanged, including the `">=0.78.0"` peer floor. No source changes; no override or resolution added for `brace-expansion`.
+
+**Rationale.** Three parts.
+
+*The bump is safe.* Every breaking change in 0.84.0 sits in a surface this package does not touch — pi-ai's model/provider registry (`ModelsStreamTransforms` → `ModelsRequestTransforms`, `ModelRegistry.getApiKeyAndHeaders`/`refresh`, `ModelRuntime.setRuntimeApiKey`, provider `context.stored`/`context.publish`), pi-agent-core's v4 lane-based session and harness APIs, the JSON/RPC `message_update` delta protocol, and experimental remote-session listings. Grepping `src/`, `tests/` and `scripts/` for all 27 identifiers those entries name returns zero hits. This package's entire pi surface is `pi.on` for three lifecycle events (`src/index.ts:35,48,120`), `pi.registerTool` (`src/tools/memory-tools.ts:48,72,171`; `src/tools/relationship-tools.ts:31,58`), `pi.registerCommand` (`src/commands/status.ts:14`; `src/commands/recall.ts:14`), and `ctx.ui.notify`/`setStatus`/`theme`/`confirm` — none of which 0.84 changes. 0.84.1 has no breaking changes at all.
+
+*Not raising the floor is deliberate.* Nothing here now requires 0.84 — the package works unchanged on 0.78 through 0.84.1 — so a higher floor would buy no safety while breaking installs for anyone on an older pi. Version 1.0.1 exists precisely because a narrow peer range (`<0.81.0`) went stale and blocked pi 0.82.0's security fixes from reaching installs. Narrowing again would repeat that mistake to solve a problem that does not exist: because the range is open-ended, npm already resolves the newest pi on every fresh install.
+
+*No local mitigation to retire.* This repo carries no `brace-expansion` workaround — no `overrides`, `resolutions`, `patchedDependencies`, `.npmrc` or patch directory, and no reference to the package anywhere outside `package-lock.json`. The advisory was only ever going to be fixed upstream, and now is: `npm ls brace-expansion` resolves 5.0.9 under `pi-coding-agent > minimatch`.
+
+**Consequences.** `npm ci` — what both workflows run — now builds against 0.84.1 with a clean audit. Contributors on pi 0.78–0.83 are unaffected: the peer range still admits them and nothing in `src/` depends on 0.84 behavior. The open peer range keeps its known cost — a future breaking pi minor will resolve silently — which is exactly the risk the weekly `sdk-check` job exists to catch. This is a lockfile-only change; `files[]` is unaffected, so it ships no npm release on its own.
+
 ## 1.0.1 — 2026-08-02
 
 ### Fixed
